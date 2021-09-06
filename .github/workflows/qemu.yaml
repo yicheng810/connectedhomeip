@@ -43,6 +43,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
             - name: Bootstrap
               timeout-minutes: 25
               run: scripts/build/gn_bootstrap.sh

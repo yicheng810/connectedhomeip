@@ -41,6 +41,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
             - name: Generate
               run: scripts/helpers/doxygen.sh
             - name: Extract branch name

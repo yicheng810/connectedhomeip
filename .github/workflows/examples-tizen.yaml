@@ -39,6 +39,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
             - name: Build example Tizen lighting app
               run:
                   scripts/run_in_build_env.sh "./scripts/build/build_examples.py --target-glob 'tizen-*' build"

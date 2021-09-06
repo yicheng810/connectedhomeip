@@ -36,6 +36,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
             - name: Setup Environment
               run: brew install openssl pkg-config python@3.9
             - name: Fix pkgconfig link

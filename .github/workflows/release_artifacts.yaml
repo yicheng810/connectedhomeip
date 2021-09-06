@@ -36,6 +36,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
                   ref: "${{ github.event.inputs.releaseTag }}"
             - name: Bootstrap
               timeout-minutes: 25
@@ -76,6 +77,7 @@ jobs:
               uses: actions/checkout@v2
               with:
                   submodules: true
+                  token: ${{ secrets.MATTER_TOKEN }}
                   ref: "${{ github.event.inputs.releaseTag }}"
             - name: Bootstrap
               timeout-minutes: 25
