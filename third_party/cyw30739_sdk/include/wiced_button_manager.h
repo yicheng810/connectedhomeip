@@ -8,10 +8,10 @@
  */
 #pragma once
 
-#include "wiced_rtos.h"
-#include "wiced.h"
-#include "wiced_timer.h"
 #include "platform_button.h"
+#include "wiced.h"
+#include "wiced_rtos.h"
+#include "wiced_timer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,13 +35,14 @@ extern "C" {
  */
 typedef enum
 {
-    BUTTON_CLICK_EVENT              = (1 << 0), /**< A click is a combination of press and release button events. Typically ~ < 200 ms.  */
-    BUTTON_SHORT_DURATION_EVENT     = (1 << 1), /**< Short duration click event                                                          */
-    BUTTON_MEDIUM_DURATION_EVENT    = (1 << 2), /**< Medium duration click event                                                         */
-    BUTTON_LONG_DURATION_EVENT      = (1 << 3), /**< Long duration click event                                                           */
-    BUTTON_VERY_LONG_DURATION_EVENT = (1 << 4), /**< Very long duration click event                                                      */
-    BUTTON_DOUBLE_CLICK_EVENT       = (1 << 5), /**< A double click is a combination of two single clicks with some delay between them   */
-    BUTTON_HOLDING_EVENT            = (1 << 6), /**< Button is holding over at least two long duration. */
+    BUTTON_CLICK_EVENT = (1 << 0), /**< A click is a combination of press and release button events. Typically ~ < 200 ms.  */
+    BUTTON_SHORT_DURATION_EVENT     = (1 << 1), /**< Short duration click event */
+    BUTTON_MEDIUM_DURATION_EVENT    = (1 << 2), /**< Medium duration click event */
+    BUTTON_LONG_DURATION_EVENT      = (1 << 3), /**< Long duration click event */
+    BUTTON_VERY_LONG_DURATION_EVENT = (1 << 4), /**< Very long duration click event */
+    BUTTON_DOUBLE_CLICK_EVENT =
+        (1 << 5),                    /**< A double click is a combination of two single clicks with some delay between them   */
+    BUTTON_HOLDING_EVENT = (1 << 6), /**< Button is holding over at least two long duration. */
 } button_manager_event_t;
 
 /**
@@ -50,8 +51,8 @@ typedef enum
  */
 typedef enum
 {
-    BUTTON_STATE_HELD      = (0),   /**< Button state held                                                          */
-    BUTTON_STATE_RELEASED  = (1),   /**< Button state released                                                      */
+    BUTTON_STATE_HELD     = (0), /**< Button state held                                                          */
+    BUTTON_STATE_RELEASED = (1), /**< Button state released                                                      */
 } button_manager_button_state_t;
 
 /******************************************************
@@ -64,8 +65,8 @@ typedef enum
  */
 typedef struct
 {
-    wiced_thread_t        *thread;      /**< Button event thread                                                          */
-    wiced_queue_t         *event_queue; /**< Button event queue                                                           */
+    wiced_thread_t * thread;     /**< Button event thread                                                          */
+    wiced_queue_t * event_queue; /**< Button event queue                                                           */
 } button_worker_thread_t;
 
 /**
@@ -74,8 +75,8 @@ typedef struct
  */
 typedef struct
 {
-    event_handler_t function;   /**< Button event handler function                 */
-    void* arg;                  /**< Button event message arguments to be passed   */
+    event_handler_t function; /**< Button event handler function                 */
+    void * arg;               /**< Button event message arguments to be passed   */
 } button_event_message_t;
 /******************************************************
  *                    Structures
@@ -87,9 +88,9 @@ typedef struct
  */
 typedef struct
 {
-    platform_button_t button;               /**< Logical Button-ids which map to phyiscal buttons on the board    */
-    uint16_t          button_event_mask;    /**< Button event mask                                                */
-    uint32_t          application_event;    /**< Application event                                                */
+    platform_button_t button;   /**< Logical Button-ids which map to physical buttons on the board    */
+    uint16_t button_event_mask; /**< Button event mask                                                */
+    uint32_t application_event; /**< Application event                                                */
 } wiced_button_configuration_t;
 
 /**
@@ -98,19 +99,19 @@ typedef struct
  */
 typedef struct
 {
-    const wiced_button_configuration_t*  configuration;             /**< Button configuration               */
-    button_manager_button_state_t        current_state;             /**< Button current state               */
-    button_manager_event_t               last_sent_event;           /**< Button last sent event             */
-    uint64_t                             pressed_timestamp;         /**< Button pressed time stamp (us)     */
-    uint64_t                             released_timestamp;        /**< Button released time stamp (us)    */
-    uint32_t                             last_released_timestamp;   /**< Button last released time stamp    */
-    wiced_bool_t                         check_for_double_click;    /**< Button double click event or not   */
-    uint32_t                             repeat;                    /**< Button holding counter */
-    int32_t                              debounce_counter;          /**< Button debounce counter            */
-    wiced_timer_t                        debounce_timer;            /**< Button debounce timer              */
-    wiced_bool_t                         debouncing;                /**< Button debounce state indication   */
-    wiced_timer_t                        long_press_timer;          /**< Button long press detection timer  */
-    uint64_t                             timer_timestamp;           /**< Button event time stamp (us)       */
+    const wiced_button_configuration_t * configuration; /**< Button configuration               */
+    button_manager_button_state_t current_state;        /**< Button current state               */
+    button_manager_event_t last_sent_event;             /**< Button last sent event             */
+    uint64_t pressed_timestamp;                         /**< Button pressed time stamp (us)     */
+    uint64_t released_timestamp;                        /**< Button released time stamp (us)    */
+    uint32_t last_released_timestamp;                   /**< Button last released time stamp    */
+    wiced_bool_t check_for_double_click;                /**< Button double click event or not   */
+    uint32_t repeat;                                    /**< Button holding counter */
+    int32_t debounce_counter;                           /**< Button debounce counter            */
+    wiced_timer_t debounce_timer;                       /**< Button debounce timer              */
+    wiced_bool_t debouncing;                            /**< Button debounce state indication   */
+    wiced_timer_t long_press_timer;                     /**< Button long press detection timer  */
+    uint64_t timer_timestamp;                           /**< Button event time stamp (us)       */
 } button_manager_button_t;
 
 /**
@@ -123,7 +124,8 @@ typedef struct
  * @return void     Library should not care whether app handled the button-events correctly or not.
  *
  */
-typedef void ( *wiced_button_event_handler_t )( const button_manager_button_t* button, button_manager_event_t event, button_manager_button_state_t state );
+typedef void (*wiced_button_event_handler_t)(const button_manager_button_t * button, button_manager_event_t event,
+                                             button_manager_button_state_t state);
 
 /**
  * @brief Button manager Configuration.
@@ -131,19 +133,19 @@ typedef void ( *wiced_button_event_handler_t )( const button_manager_button_t* b
  */
 typedef struct
 {
-    uint16_t                        short_hold_duration;    /**< held for short duration (ms)             */
-    uint16_t                        medium_hold_duration;   /**< held for medium duration (ms)            */
-    uint16_t                        long_hold_duration;     /**< held for long duration (ms)              */
-    uint16_t                        very_long_hold_duration;/**< held for very long duration (ms)         */
-    uint16_t                        debounce_duration;      /**< duration taken to de-bounce (ms)         */
-    uint16_t                        double_click_interval;  /**< Time interval between two RELEASE events */
-    wiced_bool_t                    continuous_hold_detect; /**< Flag to enable button holding detection.\n
-                                                                 If this is set to true, the BUTTON_VERY_LONG_DURATION_EVENT is disabled
-                                                                 and a BUTTON_HOLDING_EVENT will be triggered if a button is pressed over
-                                                                 twice the long_hold_duration.\n
-                                                                 The BUTTON_HOLDING_EVENT will continuous be sent every long_hold_duration
-                                                                 after the first BUTTON_HOLDING_EVENT event been sent. */
-    wiced_button_event_handler_t    event_handler;
+    uint16_t short_hold_duration;        /**< held for short duration (ms)             */
+    uint16_t medium_hold_duration;       /**< held for medium duration (ms)            */
+    uint16_t long_hold_duration;         /**< held for long duration (ms)              */
+    uint16_t very_long_hold_duration;    /**< held for very long duration (ms)         */
+    uint16_t debounce_duration;          /**< duration taken to de-bounce (ms)         */
+    uint16_t double_click_interval;      /**< Time interval between two RELEASE events */
+    wiced_bool_t continuous_hold_detect; /**< Flag to enable button holding detection.\n
+                                              If this is set to true, the BUTTON_VERY_LONG_DURATION_EVENT is disabled
+                                              and a BUTTON_HOLDING_EVENT will be triggered if a button is pressed over
+                                              twice the long_hold_duration.\n
+                                              The BUTTON_HOLDING_EVENT will continuous be sent every long_hold_duration
+                                              after the first BUTTON_HOLDING_EVENT event been sent. */
+    wiced_button_event_handler_t event_handler;
 } wiced_button_manager_configuration_t;
 
 /**
@@ -152,10 +154,10 @@ typedef struct
  */
 typedef struct
 {
-    const wiced_button_manager_configuration_t* configuration;      /**< Button manager configuration               */
-    button_manager_button_t*                    buttons;            /**< Button information                         */
-    uint32_t                                    number_of_buttons;  /**< Number of buttons                          */
-    wiced_button_event_handler_t                button_callback;    /**< Button event handler                       */
+    const wiced_button_manager_configuration_t * configuration; /**< Button manager configuration               */
+    button_manager_button_t * buttons;                          /**< Button information                         */
+    uint32_t number_of_buttons;                                 /**< Number of buttons                          */
+    wiced_button_event_handler_t button_callback;               /**< Button event handler                       */
 } button_manager_t;
 
 /**
@@ -167,7 +169,7 @@ typedef struct
  * @return void     Library should not care whether app handled the button-events correctly or not.
  */
 
-typedef void ( *wiced_button_state_change_callback_t )( platform_button_t id, wiced_bool_t new_state );
+typedef void (*wiced_button_state_change_callback_t)(platform_button_t id, wiced_bool_t new_state);
 
 /******************************************************
  *                 Global Variables
@@ -186,7 +188,9 @@ typedef void ( *wiced_button_state_change_callback_t )( platform_button_t id, wi
  * @param  number_of_buttons  : Number of buttons.
  * @return                    : result.
  */
-extern wiced_result_t wiced_button_manager_init( button_manager_t* manager, const wiced_button_manager_configuration_t* configuration, button_manager_button_t* buttons, uint32_t number_of_buttons );
+extern wiced_result_t wiced_button_manager_init(button_manager_t * manager,
+                                                const wiced_button_manager_configuration_t * configuration,
+                                                button_manager_button_t * buttons, uint32_t number_of_buttons);
 
 /**
  * The application should call this function to de-Initialize the Button Manager
@@ -194,7 +198,7 @@ extern wiced_result_t wiced_button_manager_init( button_manager_t* manager, cons
  * @param     manager   : Pointer to button manager to de-initialize.
  * @return              : result.
  */
-extern wiced_result_t wiced_button_manager_deinit( button_manager_t* manager );
+extern wiced_result_t wiced_button_manager_deinit(button_manager_t * manager);
 
 #ifdef __cplusplus
 } /* extern "C" */

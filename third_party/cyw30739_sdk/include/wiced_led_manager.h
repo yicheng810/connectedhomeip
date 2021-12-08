@@ -8,10 +8,10 @@
  */
 #pragma once
 
-#include "wiced_rtos.h"
-#include "wiced.h"
-#include "wiced_timer.h"
 #include "platform_led.h"
+#include "wiced.h"
+#include "wiced_rtos.h"
+#include "wiced_timer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,11 +39,11 @@ typedef platform_led_t wiced_led_t;
  * @brief LED configuration
  *
  */
-typedef struct {
-	wiced_led_t led;    /**< LED id             */
-	uint16_t bright;	/**< in % from 1 to 100 */
-}
-wiced_led_config_t;
+typedef struct
+{
+    wiced_led_t led; /**< LED id             */
+    uint16_t bright; /**< in % from 1 to 100 */
+} wiced_led_config_t;
 /******************************************************
  *                 Global Variables
  ******************************************************/
@@ -58,7 +58,7 @@ wiced_led_config_t;
  * @param  config      : Configuration for the LED.
  * @return             : result.
  */
-extern wiced_result_t wiced_led_manager_init( wiced_led_config_t* config);
+extern wiced_result_t wiced_led_manager_init(wiced_led_config_t * config);
 
 /**
  * Function to de-initialize the LED Manager
@@ -90,7 +90,7 @@ extern wiced_result_t wiced_led_manager_disable_led(wiced_led_t led);
  * @param  config      : Configuration for the LED.
  * @return             : result.
  */
-extern wiced_result_t wiced_led_manager_reconfig_led( wiced_led_config_t* config);
+extern wiced_result_t wiced_led_manager_reconfig_led(wiced_led_config_t * config);
 
 /**
  * Function called to blink a LED

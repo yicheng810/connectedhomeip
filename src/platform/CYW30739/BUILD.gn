@@ -56,13 +56,9 @@ static_library("CYW30739") {
     "wiced_led_manager.c",
   ]
 
-  deps = [
-    "${chip_root}/src/crypto",
-  ]
+  deps = [ "${chip_root}/src/crypto" ]
 
-  public_deps = [
-    "${chip_root}/src/platform:platform_base",
-  ]
+  public_deps = [ "${chip_root}/src/platform:platform_base" ]
 
   if (chip_enable_openthread) {
     sources += [
@@ -77,13 +73,9 @@ static_library("CYW30739") {
     ]
 
     if (chip_mdns == "platform") {
-      sources += [
-        "../OpenThread/DnssdImpl.cpp",
-      ]
+      sources += [ "../OpenThread/DnssdImpl.cpp" ]
 
-      deps += [
-        "${chip_root}/src/lib/dnssd:platform_header",
-      ]
+      deps += [ "${chip_root}/src/lib/dnssd:platform_header" ]
     }
   }
 }

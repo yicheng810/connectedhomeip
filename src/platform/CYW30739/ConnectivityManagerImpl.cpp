@@ -27,7 +27,6 @@
 #include <platform/internal/GenericConnectivityManagerImpl_BLE.cpp>
 #endif
 
-
 namespace chip {
 namespace DeviceLayer {
 

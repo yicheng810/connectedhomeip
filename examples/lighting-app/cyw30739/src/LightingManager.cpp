@@ -10,9 +10,7 @@
 #include <app/util/af.h>
 #include <stdio.h>
 
-
 LightingManager LightingManager::sLight;
-
 
 CHIP_ERROR LightingManager::Init()
 {
@@ -35,8 +33,8 @@ bool LightingManager::IsActionInProgress()
 bool LightingManager::IsLightOn(void)
 {
     uint8_t value;
-    const EmberAfStatus status = emberAfReadServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID,
-            &value, sizeof(value));
+    const EmberAfStatus status =
+        emberAfReadServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, &value, sizeof(value));
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error ReadServerAttribute 0x%02x\n", status);
@@ -84,8 +82,8 @@ bool LightingManager::InitiateAction(Actor_t aActor, Action_t aAction, uint8_t v
 
 void LightingManager::WriteClusterState(uint8_t value)
 {
-    const EmberAfStatus status = emberAfWriteServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID,
-            &value, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+    const EmberAfStatus status =
+        emberAfWriteServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, &value, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error WriteServerAttribute 0x%02x\n", status);
@@ -95,7 +93,7 @@ void LightingManager::WriteClusterState(uint8_t value)
 void LightingManager::WriteClusterLevel(uint8_t value)
 {
     const EmberAfStatus status = emberAfWriteServerAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID,
-            &value, ZCL_INT8U_ATTRIBUTE_TYPE);
+                                                             &value, ZCL_INT8U_ATTRIBUTE_TYPE);
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error WriteServerAttribute 0x%02x\n", status);

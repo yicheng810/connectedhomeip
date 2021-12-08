@@ -27,13 +27,9 @@ declare_args() {
 }
 
 cyw30739_sdk("sdk") {
-  sources = [
-    "${cyw30739_project_dir}/include/CHIPProjectConfig.h",
-  ]
+  sources = [ "${cyw30739_project_dir}/include/CHIPProjectConfig.h" ]
 
-  include_dirs = [
-    "${cyw30739_project_dir}/include",
-  ]
+  include_dirs = [ "${cyw30739_project_dir}/include" ]
 
   defines = [
     "CHIP_DEVICE_CONFIG_USE_TEST_SETUP_PIN_CODE=${setupPinCode}",

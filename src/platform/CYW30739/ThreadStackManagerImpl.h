@@ -99,4 +99,4 @@ inline ThreadStackManagerImpl & ThreadStackMgrImpl(void)
 } // namespace DeviceLayer
 } // namespace chip
 
-err_t tcpip_input(struct pbuf *p, struct netif *inp);
+err_t tcpip_input(struct pbuf * p, struct netif * inp);

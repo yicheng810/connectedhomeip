@@ -6,21 +6,21 @@
  * Button manager implements generic interface for button events and button type configurations.
  * It exposes interface to configure platform button events (like click,long press) with user configurable timing.
  */
+#include "wiced_button_manager.h"
+#include "clock_timer.h"
+#include "platform_button.h"
 #include "string.h"
 #include "wiced_bt_trace.h"
-#include "wiced_button_manager.h"
-#include "platform_button.h"
-#include "clock_timer.h"
 #ifdef CYW55572
-#include "wiced_misc_rtos_utils.h"
 #include "wiced_memory.h"
+#include "wiced_misc_rtos_utils.h"
 #endif
 
 /******************************************************
  *                      Macros
  ******************************************************/
 
-#define BUTTON_TIMER_TIMEOUT        (100) /*msec*/
+#define BUTTON_TIMER_TIMEOUT (100) /*msec*/
 
 /******************************************************
  *                    Constants
@@ -34,7 +34,7 @@
  *                 Type Definitions
  ******************************************************/
 #if BTSTACK_VER >= 0x03000001
-#define TIMER_PARAM_TYPE    WICED_TIMER_PARAM_TYPE
+#define TIMER_PARAM_TYPE WICED_TIMER_PARAM_TYPE
 #endif
 
 #ifdef CYW55572
@@ -47,7 +47,7 @@
 #ifdef CYW55572
 typedef struct
 {
-    button_manager_button_t *p_button;
+    button_manager_button_t * p_button;
     button_manager_event_t event;
 } button_event_defer_to_mpaf_t;
 #endif
@@ -55,27 +55,27 @@ typedef struct
 /******************************************************
  *               Function Declarations
  ******************************************************/
-static void button_state_change_callback( platform_button_t id, wiced_bool_t new_state );
-static wiced_result_t button_pressed_event_handler ( void* arg );
-static wiced_result_t button_released_event_handler( void* arg );
-static wiced_result_t deferred_button_timer_handler( void* arg );
+static void button_state_change_callback(platform_button_t id, wiced_bool_t new_state);
+static wiced_result_t button_pressed_event_handler(void * arg);
+static wiced_result_t button_released_event_handler(void * arg);
+static wiced_result_t deferred_button_timer_handler(void * arg);
 
-static wiced_bool_t button_check_event_mask ( button_manager_button_t* button, uint16_t new_event );
-static void button_check_for_double_click( button_manager_button_t* button,  button_manager_event_t* new_event );
-static button_manager_event_t button_deduce_duration_event( button_manager_button_t *button, uint32_t current_interval );
-static button_manager_button_t* get_button( platform_button_t id );
+static wiced_bool_t button_check_event_mask(button_manager_button_t * button, uint16_t new_event);
+static void button_check_for_double_click(button_manager_button_t * button, button_manager_event_t * new_event);
+static button_manager_event_t button_deduce_duration_event(button_manager_button_t * button, uint32_t current_interval);
+static button_manager_button_t * get_button(platform_button_t id);
 #ifdef CYW55572
-static void button_event_defer_to_mpaf(void *arg);
+static void button_event_defer_to_mpaf(void * arg);
 #endif
 
 /******************************************************
  *               Variables Definitions
  ******************************************************/
-static button_manager_t* button_manager;
+static button_manager_t * button_manager;
 #ifdef CYW55572
-static wiced_mutex_t   *p_mutex_button_event;
-static wiced_bt_buffer_q_t  button_event_queue;
-static wiced_bt_pool_t *p_button_event_pool = NULL;
+static wiced_mutex_t * p_mutex_button_event;
+static wiced_bt_buffer_q_t button_event_queue;
+static wiced_bt_pool_t * p_button_event_pool = NULL;
 #endif
 
 /******************************************************
@@ -91,7 +91,7 @@ static wiced_bt_pool_t *p_button_event_pool = NULL;
  */
 static void button_long_press_detect_timeout_handler(TIMER_PARAM_TYPE arg)
 {
-    button_manager_button_t *p_button = (button_manager_button_t *) arg;
+    button_manager_button_t * p_button = (button_manager_button_t *) arg;
 
     /* Check if button is under debouncing state. */
     if (p_button->debouncing)
@@ -126,10 +126,10 @@ static void button_long_press_detect_timeout_handler(TIMER_PARAM_TYPE arg)
  */
 static void button_debounce_timeout_handler(TIMER_PARAM_TYPE arg)
 {
-    button_manager_button_t *p_button = (button_manager_button_t *) arg;
+    button_manager_button_t * p_button = (button_manager_button_t *) arg;
     wiced_result_t result;
 
-    //WICED_BT_TRACE("button_debounce_timeout_handler (%d, %d)\n", p_button->configuration->button, p_button->debounce_counter);
+    // WICED_BT_TRACE("button_debounce_timeout_handler (%d, %d)\n", p_button->configuration->button, p_button->debounce_counter);
 
     if (p_button->debounce_counter > 0)
     {
@@ -139,12 +139,12 @@ static void button_debounce_timeout_handler(TIMER_PARAM_TYPE arg)
         button_pressed_event_handler((void *) p_button);
     }
     else
+    {
+        if (wiced_is_timer_in_use(&p_button->long_press_timer))
         {
-            if (wiced_is_timer_in_use(&p_button->long_press_timer))
-            {
-                wiced_stop_timer(&p_button->long_press_timer);
-            }
+            wiced_stop_timer(&p_button->long_press_timer);
         }
+    }
 
     /* Reset the button debounce state. */
     p_button->debouncing = WICED_FALSE;
@@ -153,54 +153,49 @@ static void button_debounce_timeout_handler(TIMER_PARAM_TYPE arg)
 /**
  * The application should call this function to Initialize the Button Manager
  */
-wiced_result_t __attribute__((weak)) wiced_button_manager_init( button_manager_t* manager, const wiced_button_manager_configuration_t* configuration, button_manager_button_t* buttons, uint32_t number_of_buttons )
+wiced_result_t __attribute__((weak))
+wiced_button_manager_init(button_manager_t * manager, const wiced_button_manager_configuration_t * configuration,
+                          button_manager_button_t * buttons, uint32_t number_of_buttons)
 {
     uint32_t a;
 
-    memset( manager, 0, sizeof( *manager ) );
+    memset(manager, 0, sizeof(*manager));
 
-    manager->configuration = configuration;
-    manager->buttons = buttons;
+    manager->configuration     = configuration;
+    manager->buttons           = buttons;
     manager->number_of_buttons = number_of_buttons;
 
     button_manager = manager;
 
-    for ( a = 0; a < number_of_buttons; a++ )
+    for (a = 0; a < number_of_buttons; a++)
     {
-        platform_button_init( buttons[a].configuration->button );
-        platform_button_enable( buttons[a].configuration->button );
-        buttons[a].current_state = BUTTON_STATE_RELEASED;
-        buttons[a].repeat = 0;
+        platform_button_init(buttons[a].configuration->button);
+        platform_button_enable(buttons[a].configuration->button);
+        buttons[a].current_state    = BUTTON_STATE_RELEASED;
+        buttons[a].repeat           = 0;
         buttons[a].debounce_counter = 0;
-        buttons[a].debouncing = WICED_FALSE;
+        buttons[a].debouncing       = WICED_FALSE;
     }
 
-    platform_button_register_state_change_callback( button_state_change_callback );
+    platform_button_register_state_change_callback(button_state_change_callback);
 
     /* Initialize the timers used for detecting the long press event. */
-    for (a = 0 ; a < number_of_buttons ; a++)
+    for (a = 0; a < number_of_buttons; a++)
     {
-        wiced_init_timer(&buttons[a].long_press_timer,
-                         button_long_press_detect_timeout_handler,
-                         (TIMER_PARAM_TYPE) &buttons[a],
+        wiced_init_timer(&buttons[a].long_press_timer, button_long_press_detect_timeout_handler, (TIMER_PARAM_TYPE) &buttons[a],
                          WICED_MILLI_SECONDS_PERIODIC_TIMER);
     }
 
     /* Initialize the timers used for de-bounce. */
-    for (a = 0 ; a < number_of_buttons ; a++)
+    for (a = 0; a < number_of_buttons; a++)
     {
-        wiced_init_timer(&buttons[a].debounce_timer,
-                         button_debounce_timeout_handler,
-                         (TIMER_PARAM_TYPE) &buttons[a],
+        wiced_init_timer(&buttons[a].debounce_timer, button_debounce_timeout_handler, (TIMER_PARAM_TYPE) &buttons[a],
                          WICED_MILLI_SECONDS_TIMER);
     }
 
 #ifdef CYW55572
-    p_button_event_pool = wiced_bt_create_pool(
-            "Button Event",
-            sizeof(button_event_defer_to_mpaf_t),
-            BUTTON_EVENT_QUEUE_DEPTH,
-            NULL);
+    p_button_event_pool =
+        wiced_bt_create_pool("Button Event", sizeof(button_event_defer_to_mpaf_t), BUTTON_EVENT_QUEUE_DEPTH, NULL);
 
     if (!p_button_event_pool)
     {
@@ -208,7 +203,7 @@ wiced_result_t __attribute__((weak)) wiced_button_manager_init( button_manager_t
         return WICED_ERROR;
     }
 
-    wiced_bt_init_q (&button_event_queue, NULL);
+    wiced_bt_init_q(&button_event_queue, NULL);
     p_mutex_button_event = wiced_rtos_create_mutex();
     if (p_mutex_button_event == NULL)
     {
@@ -232,16 +227,16 @@ wiced_result_t __attribute__((weak)) wiced_button_manager_init( button_manager_t
  * @param     manager   : Pointer to button manager to de-initialize.
  * @return              : result.
  */
-wiced_result_t wiced_button_manager_deinit( button_manager_t* manager )
+wiced_result_t wiced_button_manager_deinit(button_manager_t * manager)
 {
     uint32_t a;
-    for ( a = 0; a < manager->number_of_buttons; a++ )
+    for (a = 0; a < manager->number_of_buttons; a++)
     {
-        platform_button_disable( manager->buttons[a].configuration->button );
-        platform_button_deinit( manager->buttons[a].configuration->button );
+        platform_button_disable(manager->buttons[a].configuration->button);
+        platform_button_deinit(manager->buttons[a].configuration->button);
     }
 
-    for (a = 0 ; a < manager->number_of_buttons ; a++)
+    for (a = 0; a < manager->number_of_buttons; a++)
     {
         if (WICED_TRUE == wiced_is_timer_in_use(&manager->buttons[a].debounce_timer))
         {
@@ -268,11 +263,11 @@ wiced_result_t wiced_button_manager_deinit( button_manager_t* manager )
  * @param     arg   : Arguments passed by the timer framework to timer handler
  * @return          : result
  */
-static wiced_result_t deferred_button_timer_handler(void* arg)
+static wiced_result_t deferred_button_timer_handler(void * arg)
 {
-    button_manager_button_t *p_button = (button_manager_button_t *) arg;
-    uint64_t                duration;  // us
-    button_manager_event_t  new_held_event = 0;
+    button_manager_button_t * p_button = (button_manager_button_t *) arg;
+    uint64_t duration; // us
+    button_manager_event_t new_held_event = 0;
 
     /* Check current button state. */
     if (p_button->current_state == BUTTON_STATE_RELEASED)
@@ -282,7 +277,7 @@ static wiced_result_t deferred_button_timer_handler(void* arg)
 
     /* Calculate the time difference. */
     duration = p_button->timer_timestamp - p_button->pressed_timestamp; // us
-    duration = duration / 1000; // ms
+    duration = duration / 1000;                                         // ms
 
     /* deduce the event depending on the duration */
     new_held_event = button_deduce_duration_event(p_button, (uint32_t) duration);
@@ -316,11 +311,11 @@ static wiced_result_t deferred_button_timer_handler(void* arg)
     return WICED_SUCCESS;
 }
 
-static void button_state_change_callback_pressed(button_manager_button_t *p_button)
+static void button_state_change_callback_pressed(button_manager_button_t * p_button)
 {
     /* Check if the button is under de-bounce state. */
     if (p_button->debouncing)
-    {   // under de-bounce state
+    { // under de-bounce state
         p_button->debounce_counter++;
     }
     else
@@ -335,25 +330,24 @@ static void button_state_change_callback_pressed(button_manager_button_t *p_butt
         p_button->pressed_timestamp = clock_SystemTimeMicroseconds64();
 
         /* Start the button debounce timer. */
-        wiced_start_timer(&p_button->debounce_timer,
-                          (uint32_t) button_manager->configuration->debounce_duration);
+        wiced_start_timer(&p_button->debounce_timer, (uint32_t) button_manager->configuration->debounce_duration);
 
         /* Start the long pressed event detect timer. */
         wiced_start_timer(&p_button->long_press_timer, BUTTON_TIMER_TIMEOUT);
 
         /* Update information. */
-        p_button->debouncing        = WICED_TRUE;
-        p_button->debounce_counter  = 1;
+        p_button->debouncing       = WICED_TRUE;
+        p_button->debounce_counter = 1;
     }
 }
 
-static void button_state_change_callback_released(button_manager_button_t *p_button)
+static void button_state_change_callback_released(button_manager_button_t * p_button)
 {
     wiced_result_t result;
 
     /* Check if the button is under de-bounce state. */
     if (p_button->debouncing)
-    {   // under de-bounce state
+    { // under de-bounce state
         p_button->debounce_counter--;
     }
     else
@@ -386,7 +380,7 @@ static void button_state_change_callback_released(button_manager_button_t *p_but
  */
 static void button_state_change_callback(platform_button_t id, wiced_bool_t new_state)
 {
-    button_manager_button_t* button = get_button( id );
+    button_manager_button_t * button = get_button(id);
 
 #if 0
     WICED_BT_TRACE("button_state_change_callback (button %d %s, %s, %d, %d)\n",
@@ -398,13 +392,13 @@ static void button_state_change_callback(platform_button_t id, wiced_bool_t new_
 #endif
 
     /* Check module state.*/
-    if ( button == NULL || button_manager == NULL )
+    if (button == NULL || button_manager == NULL)
     {
         WICED_BT_TRACE("button manager not initialized\n");
         return;
     }
 
-    if ( new_state == WICED_TRUE )
+    if (new_state == WICED_TRUE)
     {
         button_state_change_callback_pressed(button);
     }
@@ -420,11 +414,11 @@ static void button_state_change_callback(platform_button_t id, wiced_bool_t new_
  * @param     arg   : Arguments passed by the event manager
  * @return    void  : No return value expected.
  */
-static wiced_result_t button_pressed_event_handler( void* arg )
+static wiced_result_t button_pressed_event_handler(void * arg)
 {
-    button_manager_button_t* button = (button_manager_button_t*)arg;
+    button_manager_button_t * button = (button_manager_button_t *) arg;
 
-    if ( button->current_state == BUTTON_STATE_HELD )
+    if (button->current_state == BUTTON_STATE_HELD)
     {
         return WICED_SUCCESS;
     }
@@ -442,13 +436,13 @@ static wiced_result_t button_pressed_event_handler( void* arg )
  * @return    void  : No return value expected.
  */
 
-static wiced_result_t button_released_event_handler( void* arg )
+static wiced_result_t button_released_event_handler(void * arg)
 {
-    button_manager_button_t* button = (button_manager_button_t*)arg;
-    button_manager_event_t  new_release_event = 0;
-    uint64_t duration;  // us
+    button_manager_button_t * button         = (button_manager_button_t *) arg;
+    button_manager_event_t new_release_event = 0;
+    uint64_t duration; // us
 
-    if ( button->current_state == BUTTON_STATE_RELEASED )
+    if (button->current_state == BUTTON_STATE_RELEASED)
     {
         return WICED_SUCCESS;
     }
@@ -456,30 +450,30 @@ static wiced_result_t button_released_event_handler( void* arg )
     button->current_state = BUTTON_STATE_RELEASED;
 
     /* Calculate the time difference. */
-    duration = button->released_timestamp - button->pressed_timestamp;  // us
-    duration = duration / 1000; // ms
+    duration = button->released_timestamp - button->pressed_timestamp; // us
+    duration = duration / 1000;                                        // ms
 
     /** If release event comes before debounce duration, ignore it */
-    if ( duration <= button_manager->configuration->debounce_duration )
+    if (duration <= button_manager->configuration->debounce_duration)
     {
         return WICED_SUCCESS;
     }
 
     /** deduce the event depending on the duration */
-    new_release_event = button_deduce_duration_event( button, (uint32_t) duration );
+    new_release_event = button_deduce_duration_event(button, (uint32_t) duration);
 
     /** Check if this Release is from 2nd click of a double-click event */
-    button_check_for_double_click( button, &new_release_event );
+    button_check_for_double_click(button, &new_release_event);
 
     /**
      * As the new state is Release and application has asked for this kind of event,
      * send it irrespective of whether timer-hanlder
      * had sent it previously
      */
-    if ( button_check_event_mask( button, new_release_event ) )
+    if (button_check_event_mask(button, new_release_event))
     {
 #ifndef CYW55572
-        button_manager->configuration->event_handler( button, new_release_event, button->current_state );
+        button_manager->configuration->event_handler(button, new_release_event, button->current_state);
 #else
         /*
          * Button released event is handled by another thread, it needs defer to mpaf thread.
@@ -489,7 +483,7 @@ static wiced_result_t button_released_event_handler( void* arg )
         wiced_result_t result;
 
         wiced_rtos_lock_mutex(p_mutex_button_event);
-        button_event_defer_to_mpaf_t *p_data = (button_event_defer_to_mpaf_t *)wiced_bt_get_buffer_from_pool(p_button_event_pool);
+        button_event_defer_to_mpaf_t * p_data = (button_event_defer_to_mpaf_t *) wiced_bt_get_buffer_from_pool(p_button_event_pool);
 
         if (!p_data)
         {
@@ -499,17 +493,15 @@ static wiced_result_t button_released_event_handler( void* arg )
         }
 
         p_data->p_button = button;
-        p_data->event = new_release_event;
-        wiced_bt_enqueue(&button_event_queue, (wiced_bt_buffer_t *)p_data);
+        p_data->event    = new_release_event;
+        wiced_bt_enqueue(&button_event_queue, (wiced_bt_buffer_t *) p_data);
         wiced_rtos_unlock_mutex(p_mutex_button_event);
-        result = wiced_rtos_defer_execution(WICED_RTOS_DEFER_TO_MPAF_THREAD,
-                                            &button_event_defer_to_mpaf,
-                                            NULL);
+        result = wiced_rtos_defer_execution(WICED_RTOS_DEFER_TO_MPAF_THREAD, &button_event_defer_to_mpaf, NULL);
 
         if (result != WICED_SUCCESS)
         {
             wiced_rtos_lock_mutex(p_mutex_button_event);
-            button_event_defer_to_mpaf_t *p_buf = (button_event_defer_to_mpaf_t *)wiced_bt_dequeue(&button_event_queue);
+            button_event_defer_to_mpaf_t * p_buf = (button_event_defer_to_mpaf_t *) wiced_bt_dequeue(&button_event_queue);
             wiced_bt_free_buffer(p_buf);
             wiced_rtos_unlock_mutex(p_mutex_button_event);
             WICED_BT_TRACE("Err: release event_handler wiced_rtos_defer_execution (%d)\n", result);
@@ -519,7 +511,7 @@ static wiced_result_t button_released_event_handler( void* arg )
     }
 
 #ifdef CYW55572
-    DEFER_MPAF_ERROR:
+DEFER_MPAF_ERROR:
 #endif
 
     /** reset the button's last-sent so that a new press/held after this release is handled properly */
@@ -535,14 +527,14 @@ static wiced_result_t button_released_event_handler( void* arg )
  * @param     new_event : new event generated for the button.
  * @return         void : no return value is expected.
  */
-static void button_check_for_double_click( button_manager_button_t* button,  button_manager_event_t* new_event )
+static void button_check_for_double_click(button_manager_button_t * button, button_manager_event_t * new_event)
 {
-    if( !button_check_event_mask( button, BUTTON_DOUBLE_CLICK_EVENT ) || *new_event != BUTTON_CLICK_EVENT )
+    if (!button_check_event_mask(button, BUTTON_DOUBLE_CLICK_EVENT) || *new_event != BUTTON_CLICK_EVENT)
     {
         return;
     }
     /** figure out the time-difference in two-releases */
-    if ( (button->released_timestamp - button->last_released_timestamp) <= button_manager->configuration->double_click_interval  )
+    if ((button->released_timestamp - button->last_released_timestamp) <= button_manager->configuration->double_click_interval)
     {
         /** morph it as DOUBLE_CLICK */
         *new_event = BUTTON_DOUBLE_CLICK_EVENT;
@@ -551,7 +543,6 @@ static void button_check_for_double_click( button_manager_button_t* button,  but
     button->last_released_timestamp = button->released_timestamp;
 
     return;
-
 }
 
 /**
@@ -561,14 +552,14 @@ static void button_check_for_double_click( button_manager_button_t* button,  but
  * @param     new_event     : new event generated for the button.
  * @return    wiced_bool_t  : returns true/false based on the new event.
  */
-static wiced_bool_t button_check_event_mask ( button_manager_button_t* button, uint16_t new_event )
+static wiced_bool_t button_check_event_mask(button_manager_button_t * button, uint16_t new_event)
 {
-    if ( !button )
+    if (!button)
     {
         return WICED_FALSE;
     }
 
-    return ( ( new_event & button->configuration->button_event_mask ) ? WICED_TRUE : WICED_FALSE );
+    return ((new_event & button->configuration->button_event_mask) ? WICED_TRUE : WICED_FALSE);
 }
 
 /**
@@ -579,34 +570,38 @@ static wiced_bool_t button_check_event_mask ( button_manager_button_t* button, u
  * @return  button_manager_event_t    : returns button manager event.
  */
 
-static button_manager_event_t button_deduce_duration_event( button_manager_button_t *button, uint32_t current_interval )
+static button_manager_event_t button_deduce_duration_event(button_manager_button_t * button, uint32_t current_interval)
 {
-    button_manager_event_t  new_event = 0;
+    button_manager_event_t new_event = 0;
     uint32_t target_hold_interval;
 
     if (current_interval <= button_manager->configuration->debounce_duration)
     {
         return (button_manager_event_t) 0;
     }
-    else if( current_interval > button_manager->configuration->debounce_duration && current_interval <= button_manager->configuration->short_hold_duration )
+    else if (current_interval > button_manager->configuration->debounce_duration &&
+             current_interval <= button_manager->configuration->short_hold_duration)
     {
         return BUTTON_CLICK_EVENT;
     }
-    else if( current_interval > button_manager->configuration->short_hold_duration && current_interval <= button_manager->configuration->medium_hold_duration )
+    else if (current_interval > button_manager->configuration->short_hold_duration &&
+             current_interval <= button_manager->configuration->medium_hold_duration)
     {
         return BUTTON_SHORT_DURATION_EVENT;
     }
-    else if( current_interval > button_manager->configuration->medium_hold_duration && current_interval <= button_manager->configuration->long_hold_duration )
+    else if (current_interval > button_manager->configuration->medium_hold_duration &&
+             current_interval <= button_manager->configuration->long_hold_duration)
     {
         return BUTTON_MEDIUM_DURATION_EVENT;
     }
-    else if( current_interval > button_manager->configuration->long_hold_duration && current_interval <= button_manager->configuration->very_long_hold_duration )
+    else if (current_interval > button_manager->configuration->long_hold_duration &&
+             current_interval <= button_manager->configuration->very_long_hold_duration)
     {
         button->repeat = 0;
         return BUTTON_LONG_DURATION_EVENT;
     }
     else
-    {   // current_interval > button_manager->configuration->very_long_hold_duration
+    { // current_interval > button_manager->configuration->very_long_hold_duration
         if (button_manager->configuration->continuous_hold_detect == WICED_FALSE)
         {
             return BUTTON_VERY_LONG_DURATION_EVENT;
@@ -636,15 +631,15 @@ static button_manager_event_t button_deduce_duration_event( button_manager_butto
  * @return  button_manager_button_t    : returns button.
  */
 
-static button_manager_button_t* get_button( platform_button_t id )
+static button_manager_button_t * get_button(platform_button_t id)
 {
     uint8_t a;
 
-    for ( a = 0; a < button_manager->number_of_buttons; a++ )
+    for (a = 0; a < button_manager->number_of_buttons; a++)
     {
-        if ( button_manager->buttons[ a ].configuration->button == id )
+        if (button_manager->buttons[a].configuration->button == id)
         {
-            return &button_manager->buttons[ a ];
+            return &button_manager->buttons[a];
         }
     }
 
@@ -652,17 +647,16 @@ static button_manager_button_t* get_button( platform_button_t id )
 }
 
 #ifdef CYW55572
-static void button_event_defer_to_mpaf(void *arg)
+static void button_event_defer_to_mpaf(void * arg)
 {
     button_event_defer_to_mpaf_t button_event_buf;
 
     wiced_rtos_lock_mutex(p_mutex_button_event);
-    button_event_defer_to_mpaf_t *p_buf = (button_event_defer_to_mpaf_t *)wiced_bt_dequeue(&button_event_queue);
+    button_event_defer_to_mpaf_t * p_buf = (button_event_defer_to_mpaf_t *) wiced_bt_dequeue(&button_event_queue);
     memcpy(&button_event_buf, p_buf, sizeof(button_event_defer_to_mpaf_t));
     wiced_bt_free_buffer(p_buf);
     wiced_rtos_unlock_mutex(p_mutex_button_event);
-    button_manager->configuration->event_handler(button_event_buf.p_button,
-                                                 button_event_buf.event,
+    button_manager->configuration->event_handler(button_event_buf.p_button, button_event_buf.event,
                                                  button_event_buf.p_button->current_state);
 }
 #endif

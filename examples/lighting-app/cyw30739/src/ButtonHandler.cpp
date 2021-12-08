@@ -15,10 +15,10 @@
 /******************************************************
  *                      Macros
  ******************************************************/
-void app_button_event_handler( const button_manager_button_t* button, button_manager_event_t event, button_manager_button_state_t state );
+void app_button_event_handler(const button_manager_button_t * button, button_manager_event_t event,
+                              button_manager_button_state_t state);
 
-static wiced_button_manager_configuration_t app_button_manager_configuration =
-{
+static wiced_button_manager_configuration_t app_button_manager_configuration = {
     .short_hold_duration     = 500, /*msec*/
     .medium_hold_duration    = 700,
     .long_hold_duration      = 1500,
@@ -26,7 +26,7 @@ static wiced_button_manager_configuration_t app_button_manager_configuration =
     .debounce_duration       = 150, /* typically a click takes around ~150-200 ms */
     .double_click_interval   = 250,
     .continuous_hold_detect  = WICED_TRUE,
-    .event_handler = app_button_event_handler,
+    .event_handler           = app_button_event_handler,
 };
 
 /* Static button configuration */
@@ -42,14 +42,11 @@ wiced_result_t app_button_init(void)
     memset(app_button_configurations, 0, (sizeof(wiced_button_configuration_t) * APP_MAX_BUTTON_DEF));
     memset(app_buttons, 0, (sizeof(button_manager_button_t) * APP_MAX_BUTTON_DEF));
 
-    app_button_configurations[ON_OFF_BUTTON].button = PLATFORM_BUTTON_1;
+    app_button_configurations[ON_OFF_BUTTON].button            = PLATFORM_BUTTON_1;
     app_button_configurations[ON_OFF_BUTTON].button_event_mask = BUTTON_CLICK_EVENT;
-    app_buttons[ON_OFF_BUTTON].configuration = &app_button_configurations[ON_OFF_BUTTON];
+    app_buttons[ON_OFF_BUTTON].configuration                   = &app_button_configurations[ON_OFF_BUTTON];
 
-    result = wiced_button_manager_init(&app_button_manager,
-                                       &app_button_manager_configuration,
-                                       app_buttons,
-                                       1);
+    result = wiced_button_manager_init(&app_button_manager, &app_button_manager_configuration, app_buttons, 1);
 
     if (result != WICED_SUCCESS)
     {
@@ -58,12 +55,13 @@ wiced_result_t app_button_init(void)
     return result;
 }
 
-void app_button_event_handler( const button_manager_button_t* button_mgr, button_manager_event_t event, button_manager_button_state_t state )
+void app_button_event_handler(const button_manager_button_t * button_mgr, button_manager_event_t event,
+                              button_manager_button_state_t state)
 {
-    //printf("app_button_event_handler. button=%d, event=%d, state=%d\n", button_mgr[ON_OFF_BUTTON].configuration->button, event, state);
+    // printf("app_button_event_handler. button=%d, event=%d, state=%d\n", button_mgr[ON_OFF_BUTTON].configuration->button, event,
+    // state);
 
-    if (button_mgr[0].configuration->button == PLATFORM_BUTTON_1 &&
-            event == BUTTON_CLICK_EVENT && state == BUTTON_STATE_RELEASED)
+    if (button_mgr[0].configuration->button == PLATFORM_BUTTON_1 && event == BUTTON_CLICK_EVENT && state == BUTTON_STATE_RELEASED)
     {
         if (LightMgr().IsLightOn())
         {

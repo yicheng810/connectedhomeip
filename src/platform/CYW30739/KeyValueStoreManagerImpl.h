@@ -45,11 +45,9 @@ public:
     CHIP_ERROR _Put(const char * key, const void * value, size_t value_size);
 
 private:
-    static constexpr uint8_t mMaxEntryCount =
-        1 + /* For the global message counter */
-        1 + /* For the admin key count */
-        CHIP_CONFIG_MAX_DEVICE_ADMINS +
-        1 + /* For the session key count */
+    static constexpr uint8_t mMaxEntryCount = 1 + /* For the global message counter */
+        1 +                                       /* For the admin key count */
+        CHIP_CONFIG_MAX_DEVICE_ADMINS + 1 +       /* For the session key count */
         CHIP_CONFIG_MAX_SESSION_KEYS;
 
     struct KeyEntry

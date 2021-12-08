@@ -22,16 +22,14 @@ using namespace ::chip::Credentials;
 using namespace ::chip::DeviceLayer;
 using namespace ::chip::Shell;
 
-static void EventHandler(const ChipDeviceEvent *event, intptr_t arg);
-static void HandleThreadStateChangeEvent(const ChipDeviceEvent *event);
+static void EventHandler(const ChipDeviceEvent * event, intptr_t arg);
+static void HandleThreadStateChangeEvent(const ChipDeviceEvent * event);
 static void LightManagerCallback(LightingManager::Actor_t actor, LightingManager::Action_t action, uint8_t value);
 
-static wiced_led_config_t chip_lighting_led_config =
-{
-    .led = PLATFORM_LED_1,
+static wiced_led_config_t chip_lighting_led_config = {
+    .led    = PLATFORM_LED_1,
     .bright = 50,
 };
-
 
 APPLICATION_START()
 {
@@ -77,7 +75,7 @@ APPLICATION_START()
 
 #if CHIP_DEVICE_CONFIG_THREAD_FTD
     err = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_Router);
-#else // !CHIP_DEVICE_CONFIG_THREAD_FTD
+#else  // !CHIP_DEVICE_CONFIG_THREAD_FTD
     err = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_MinimalEndDevice);
 #endif // CHIP_DEVICE_CONFIG_THREAD_FTD
     if (err != CHIP_NO_ERROR)
@@ -125,7 +123,7 @@ APPLICATION_START()
     assert(!wiced_rtos_check_for_stack_overflow());
 }
 
-void EventHandler(const ChipDeviceEvent *event, intptr_t arg)
+void EventHandler(const ChipDeviceEvent * event, intptr_t arg)
 {
     switch (event->Type)
     {
@@ -137,7 +135,7 @@ void EventHandler(const ChipDeviceEvent *event, intptr_t arg)
     }
 }
 
-void HandleThreadStateChangeEvent(const ChipDeviceEvent *event)
+void HandleThreadStateChangeEvent(const ChipDeviceEvent * event)
 {
 #if CHIP_BYPASS_RENDEZVOUS
     if (event->ThreadStateChange.NetDataChanged && !ConnectivityMgr().IsThreadProvisioned())

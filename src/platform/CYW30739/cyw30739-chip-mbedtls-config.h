@@ -17,7 +17,6 @@
 
 #pragma once
 
-
 /**
  * \def MBEDTLS_AES_ALT
  *

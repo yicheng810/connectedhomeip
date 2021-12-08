@@ -39,11 +39,10 @@ template <typename T>
 CHIP_ERROR CYW30739Config::ReadConfigValue(Key key, T & val)
 {
     wiced_result_t result;
-    uint16_t read_count = wiced_hal_read_nvram(
-            PLATFORM_NVRAM_VSID_MATTER_BASE + key, sizeof(val), (uint8_t *) &val, &result);
-    if (result != WICED_SUCCESS || read_count != sizeof(val)) {
-        read_count = wiced_hal_read_nvram_static(
-            PLATFORM_NVRAM_SSID_MATTER_BASE + key, sizeof(val), &val, &result);
+    uint16_t read_count = wiced_hal_read_nvram(PLATFORM_NVRAM_VSID_MATTER_BASE + key, sizeof(val), (uint8_t *) &val, &result);
+    if (result != WICED_SUCCESS || read_count != sizeof(val))
+    {
+        read_count = wiced_hal_read_nvram_static(PLATFORM_NVRAM_SSID_MATTER_BASE + key, sizeof(val), &val, &result);
     }
     if (result == WICED_SUCCESS && read_count == sizeof(val))
         return CHIP_NO_ERROR;
@@ -59,11 +58,10 @@ CHIP_ERROR CYW30739Config::ReadConfigValueStr(Key key, char * buf, size_t bufSiz
 CHIP_ERROR CYW30739Config::ReadConfigValueBin(Key key, uint8_t * buf, size_t bufSize, size_t & outLen)
 {
     wiced_result_t result;
-    uint16_t read_count = wiced_hal_read_nvram(
-            PLATFORM_NVRAM_VSID_MATTER_BASE + key, bufSize, (uint8_t *)buf, &result);
-    if (result != WICED_SUCCESS) {
-        read_count = wiced_hal_read_nvram_static(
-            PLATFORM_NVRAM_SSID_MATTER_BASE + key, bufSize, buf, &result);
+    uint16_t read_count = wiced_hal_read_nvram(PLATFORM_NVRAM_VSID_MATTER_BASE + key, bufSize, (uint8_t *) buf, &result);
+    if (result != WICED_SUCCESS)
+    {
+        read_count = wiced_hal_read_nvram_static(PLATFORM_NVRAM_SSID_MATTER_BASE + key, bufSize, buf, &result);
     }
     if (result == WICED_SUCCESS)
     {
@@ -101,7 +99,7 @@ CHIP_ERROR CYW30739Config::WriteConfigValueStr(Key key, const char * str, size_t
 CHIP_ERROR CYW30739Config::WriteConfigValueBin(Key key, const uint8_t * data, size_t dataLen)
 {
     wiced_result_t result;
-    wiced_hal_write_nvram(PLATFORM_NVRAM_VSID_MATTER_BASE + key, dataLen, (uint8_t *)data, &result);
+    wiced_hal_write_nvram(PLATFORM_NVRAM_VSID_MATTER_BASE + key, dataLen, (uint8_t *) data, &result);
     if (result == WICED_SUCCESS)
         return CHIP_NO_ERROR;
     else
@@ -125,9 +123,7 @@ CHIP_ERROR CYW30739Config::FactoryResetConfig(void)
     return CHIP_NO_ERROR;
 }
 
-void CYW30739Config::RunConfigUnitTest(void)
-{
-}
+void CYW30739Config::RunConfigUnitTest(void) {}
 
 } // namespace Internal
 } // namespace DeviceLayer

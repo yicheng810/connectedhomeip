@@ -39,12 +39,7 @@ config("mbedtls_cyw30739_config") {
 }
 
 mbedtls_target("mbedtls") {
+  public_configs = [ ":mbedtls_cyw30739_config" ]
 
-  public_configs = [
-    ":mbedtls_cyw30739_config",
-  ]
-
-  public_deps = [
-    "${openthread_root}/src/core:libopenthread_core_headers",
-  ]
+  public_deps = [ "${openthread_root}/src/core:libopenthread_core_headers" ]
 }

@@ -2,9 +2,9 @@
  * $ Copyright 2016-YEAR Cypress Semiconductor $
  */
 
+#include "LightingManager.h"
 #include <app-common/zap-generated/attributes/Accessors.h>
 #include <platform/CHIPDeviceLayer.h>
-#include "LightingManager.h"
 
 using namespace chip;
 using namespace chip::app::Clusters;
@@ -24,8 +24,8 @@ void emberAfBasicClusterInitCallback(EndpointId endpoint)
     Basic::Attributes::ManufacturingDate::Set(endpoint, CharSpan(cString));
 }
 
-void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attributePath, uint8_t mask, uint8_t type,
-                                       uint16_t size, uint8_t * value)
+void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attributePath, uint8_t mask, uint8_t type, uint16_t size,
+                                       uint8_t * value)
 
 {
     switch (attributePath.mClusterId)
@@ -35,7 +35,7 @@ void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attrib
         {
             printf("ZCL OnOff -> %u\n", *value);
             LightMgr().InitiateAction(LightingManager::ACTOR_ZCL_CMD,
-                    (*value == 0) ? LightingManager::OFF_ACTION : LightingManager::ON_ACTION, *value);
+                                      (*value == 0) ? LightingManager::OFF_ACTION : LightingManager::ON_ACTION, *value);
             return;
         }
         break;

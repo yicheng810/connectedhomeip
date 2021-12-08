@@ -2,9 +2,9 @@
  * $ Copyright 2016-YEAR Cypress Semiconductor $
  */
 
+#include "LightingManager.h"
 #include <lib/shell/commands/Help.h>
 #include <platform/CHIPDeviceLayer.h>
-#include "LightingManager.h"
 
 using namespace chip::Shell;
 

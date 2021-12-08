@@ -28,7 +28,6 @@
 
 #pragma once
 
-
 // -------------------- Device Identification Configuration --------------------
 
 /* The VendorName attribute of the Basic cluster. */

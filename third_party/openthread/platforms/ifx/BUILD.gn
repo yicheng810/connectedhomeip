@@ -20,23 +20,15 @@ openthread_ifx_root = "${chip_root}/third_party/openthread/ot-ifx"
 openthread_ifx_mcu = "cyw30739"
 
 config("openthread_ifx_config") {
-  include_dirs = [
-    "${openthread_ifx_root}/src/${openthread_ifx_mcu}",
-  ]
+  include_dirs = [ "${openthread_ifx_root}/src/${openthread_ifx_mcu}" ]
 }
 
 source_set("openthread_core_config_ifx") {
-  sources = [
-    "${openthread_ifx_root}/src/${openthread_ifx_mcu}/openthread-core-cyw30739-config.h",
-  ]
+  sources = [ "${openthread_ifx_root}/src/${openthread_ifx_mcu}/openthread-core-cyw30739-config.h" ]
 
-  public_deps = [
-    "${cyw30739_sdk_build_root}:cyw30739_sdk",
-  ]
+  public_deps = [ "${cyw30739_sdk_build_root}:cyw30739_sdk" ]
 
-  public_configs = [
-    ":openthread_ifx_config"
-  ]
+  public_configs = [ ":openthread_ifx_config" ]
 }
 
 source_set("libopenthread-ifx") {

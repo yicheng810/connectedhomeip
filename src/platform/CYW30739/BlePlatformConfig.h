@@ -27,7 +27,7 @@
 // ==================== Platform Adaptations ====================
 
 #define BLE_CONNECTION_OBJECT uint16_t
-#define BLE_CONNECTION_UNINITIALIZED ((uint16_t)0xffff)
+#define BLE_CONNECTION_UNINITIALIZED ((uint16_t) 0xffff)
 
 // ========== Platform-specific Configuration Overrides =========
 

@@ -26,8 +26,8 @@
 
 #include <platform/internal/GenericConfigurationManagerImpl.cpp>
 
-#include <platform/ConfigurationManager.h>
 #include <platform/CYW30739/CYW30739Config.h>
+#include <platform/ConfigurationManager.h>
 
 #include <hal/wiced_hal_wdog.h>
 #include <platform/KeyValueStoreManager.h>

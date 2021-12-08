@@ -31,12 +31,10 @@
 #include <hal/wiced_memory.h>
 #include <wiced_platform.h>
 
-
 namespace chip {
 namespace DeviceLayer {
 
 PlatformManagerImpl PlatformManagerImpl::sInstance;
-
 
 CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
 {
@@ -74,7 +72,6 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     result = wiced_init_timer(&mTimer, TimerCallback, 0, WICED_MILLI_SECONDS_TIMER);
     VerifyOrExit(result == WICED_SUCCESS, err = CHIP_ERROR_INTERNAL);
 
-
     /* Initialize the mutex. */
     mMutex = wiced_rtos_create_mutex();
     VerifyOrExit(mMutex != nullptr, err = CHIP_ERROR_NO_MEMORY);
@@ -96,9 +93,9 @@ void PlatformManagerImpl::_RunEventLoop(void)
 
     while (true)
     {
-        uint32_t flags_set = 0;
-        const wiced_result_t result = wiced_rtos_wait_for_event_flags(mEventFlags,
-                0xffffffff, &flags_set, WICED_TRUE, WAIT_FOR_ANY_EVENT, WICED_WAIT_FOREVER);
+        uint32_t flags_set          = 0;
+        const wiced_result_t result = wiced_rtos_wait_for_event_flags(mEventFlags, 0xffffffff, &flags_set, WICED_TRUE,
+                                                                      WAIT_FOR_ANY_EVENT, WICED_WAIT_FOREVER);
         if (result != WICED_SUCCESS)
         {
             ChipLogError(DeviceLayer, "wiced_rtos_wait_for_event_flags 0x%08x", result);
@@ -122,12 +119,8 @@ CHIP_ERROR PlatformManagerImpl::_StartEventLoopTask(void)
     CHIP_ERROR err = CHIP_NO_ERROR;
     wiced_result_t result;
 
-    result = wiced_rtos_init_thread(mThread,
-            CHIP_DEVICE_CONFIG_CHIP_TASK_PRIORITY,
-            CHIP_DEVICE_CONFIG_CHIP_TASK_NAME,
-            EventLoopTaskMain,
-            CHIP_DEVICE_CONFIG_CHIP_TASK_STACK_SIZE,
-            this);
+    result = wiced_rtos_init_thread(mThread, CHIP_DEVICE_CONFIG_CHIP_TASK_PRIORITY, CHIP_DEVICE_CONFIG_CHIP_TASK_NAME,
+                                    EventLoopTaskMain, CHIP_DEVICE_CONFIG_CHIP_TASK_STACK_SIZE, this);
     VerifyOrExit(result == WICED_SUCCESS, err = CHIP_ERROR_NO_MEMORY);
 
 exit:
@@ -137,16 +130,13 @@ exit:
 void PlatformManagerImpl::_LockChipStack(void)
 {
     const wiced_result_t result = wiced_rtos_lock_mutex(mMutex);
-    VerifyOrReturn(result == WICED_SUCCESS,
-            ChipLogError(DeviceLayer, "%s %x", __func__, result));
+    VerifyOrReturn(result == WICED_SUCCESS, ChipLogError(DeviceLayer, "%s %x", __func__, result));
 }
-
 
 void PlatformManagerImpl::_UnlockChipStack(void)
 {
     const wiced_result_t result = wiced_rtos_unlock_mutex(mMutex);
-    VerifyOrReturn(result == WICED_SUCCESS || result == WICED_NOT_OWNED,
-            ChipLogError(DeviceLayer, "%s %x", __func__, result));
+    VerifyOrReturn(result == WICED_SUCCESS || result == WICED_NOT_OWNED, ChipLogError(DeviceLayer, "%s %x", __func__, result));
 }
 
 CHIP_ERROR PlatformManagerImpl::_PostEvent(const ChipDeviceEvent * event)

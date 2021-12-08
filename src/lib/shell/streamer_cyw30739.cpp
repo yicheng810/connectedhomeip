@@ -24,15 +24,12 @@
 namespace chip {
 namespace Shell {
 
-
 void ProcessInput(intptr_t args);
-
 
 static int streamer_cyw30739_init(streamer_t * streamer);
 static ssize_t streamer_cyw30739_read(streamer_t * streamer, char * buf, size_t len);
 static ssize_t streamer_cyw30739_write(streamer_t * streamer, const char * buf, size_t len);
-static void streamer_cyw30739_uart_rx_handler(void *arg);
-
+static void streamer_cyw30739_uart_rx_handler(void * arg);
 
 static streamer_t streamer_stdio = {
     .init_cb  = streamer_cyw30739_init,
@@ -69,7 +66,7 @@ ssize_t streamer_cyw30739_write(streamer_t * streamer, const char * buf, size_t 
     return 0;
 }
 
-void streamer_cyw30739_uart_rx_handler(void *arg)
+void streamer_cyw30739_uart_rx_handler(void * arg)
 {
     DeviceLayer::PlatformMgr().LockChipStack();
     DeviceLayer::PlatformMgr().ScheduleWork(ProcessInput, 0);

@@ -23,8 +23,8 @@
 
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
-#include <platform/DiagnosticDataProvider.h>
 #include <platform/CYW30739/DiagnosticDataProviderImpl.h>
+#include <platform/DiagnosticDataProvider.h>
 
 #include <hal/wiced_memory.h>
 #include <malloc.h>

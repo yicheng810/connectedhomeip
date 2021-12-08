@@ -7,19 +7,18 @@
  * LED Manager library provides API's to enable/disable, blink and set brightness of a LED.
  */
 
-#include "wiced_hal_gpio.h"
-#include "wiced_bt_trace.h"
-#include "wiced_platform.h"
+#include "wiced_led_manager.h"
+#include "platform_led.h"
 #include "wiced_bt_dev.h"
+#include "wiced_bt_trace.h"
+#include "wiced_hal_gpio.h"
+#include "wiced_platform.h"
 #include "wiced_rtos.h"
 #include "wiced_timer.h"
-#include "wiced_bt_trace.h"
-#include "platform_led.h"
-#include "wiced_led_manager.h"
 /******************************************************
  *                      Macros
  ******************************************************/
-#define LED_FREQ			(60) /*Hz*/
+#define LED_FREQ (60) /*Hz*/
 
 /******************************************************
  *                    Constants
@@ -43,11 +42,11 @@ extern platform_led_config_t platform_led_config[PLATFORM_LED_MAX];
  */
 typedef struct
 {
-	wiced_led_t led;
-	wiced_bool_t led_state;
-	uint32_t on_period;
-	uint32_t off_period;
-	wiced_timer_t timer;
+    wiced_led_t led;
+    wiced_bool_t led_state;
+    uint32_t on_period;
+    uint32_t off_period;
+    wiced_timer_t timer;
     wiced_bool_t is_init;
 } led_manager_timer;
 
@@ -68,19 +67,19 @@ void led_timer_function(uint32_t arg);
  * @param  config      : Configuration for the LED.
  * @return             : result.
  */
-wiced_result_t wiced_led_manager_init( wiced_led_config_t* config )
+wiced_result_t wiced_led_manager_init(wiced_led_config_t * config)
 {
-	uint32_t i;
-	uint16_t bright;
-    //WICED_BT_TRACE("%s <<\n",__func__);
-	if(config == NULL)
-		return WICED_ERROR;
+    uint32_t i;
+    uint16_t bright;
+    // WICED_BT_TRACE("%s <<\n",__func__);
+    if (config == NULL)
+        return WICED_ERROR;
 
-	if(config->led >= PLATFORM_LED_MAX)
-	{
-		WICED_BT_TRACE("Invalid LED for platform\n");
-		return WICED_ERROR;
-	}
+    if (config->led >= PLATFORM_LED_MAX)
+    {
+        WICED_BT_TRACE("Invalid LED for platform\n");
+        return WICED_ERROR;
+    }
 
     /* check whether initialized */
     if (led_timer[config->led].is_init)
@@ -89,28 +88,25 @@ wiced_result_t wiced_led_manager_init( wiced_led_config_t* config )
         return WICED_ERROR;
     }
 
-	bright = config->bright;
+    bright = config->bright;
 
-	if (bright > 99)
-	{
-		bright = 99;
-	}
+    if (bright > 99)
+    {
+        bright = 99;
+    }
 
-	if(WICED_SUCCESS !=	platform_led_init( &platform_led_config[config->led], LED_FREQ, bright))
-		return WICED_ERROR;
+    if (WICED_SUCCESS != platform_led_init(&platform_led_config[config->led], LED_FREQ, bright))
+        return WICED_ERROR;
 
-	led_timer[config->led].led = config->led;
+    led_timer[config->led].led = config->led;
 
     /* initialize timer */
-    wiced_init_timer(&led_timer[config->led].timer,
-                     &led_timer_function,
-                     (uint32_t)config->led,
+    wiced_init_timer(&led_timer[config->led].timer, &led_timer_function, (uint32_t) config->led,
                      WICED_MILLI_SECONDS_PERIODIC_TIMER);
 
     led_timer[config->led].is_init = WICED_TRUE;
 
-	return WICED_SUCCESS;
-
+    return WICED_SUCCESS;
 }
 
 /**
@@ -119,12 +115,12 @@ wiced_result_t wiced_led_manager_init( wiced_led_config_t* config )
  * @param  void        : No arguments.
  * @return             : result.
  */
-wiced_result_t wiced_led_manager_deinit( )
+wiced_result_t wiced_led_manager_deinit()
 {
-	uint32_t i;
-	/*if any led active we stop all of them*/
-	for(i=0;i<PLATFORM_LED_MAX;i++)
-		platform_led_deinit( &platform_led_config[i]);
+    uint32_t i;
+    /*if any led active we stop all of them*/
+    for (i = 0; i < PLATFORM_LED_MAX; i++)
+        platform_led_deinit(&platform_led_config[i]);
 
     /* deinit timer */
     for (i = 0; i < PLATFORM_LED_MAX; i++)
@@ -136,7 +132,7 @@ wiced_result_t wiced_led_manager_deinit( )
         }
     }
 
-	return WICED_SUCCESS;
+    return WICED_SUCCESS;
 }
 
 /**
@@ -147,16 +143,16 @@ wiced_result_t wiced_led_manager_deinit( )
  */
 wiced_result_t wiced_led_manager_enable_led(wiced_led_t led)
 {
-	wiced_result_t result;
-	if(led >= PLATFORM_LED_MAX)
-	{
-		WICED_BT_TRACE("Invalid LED for platform\n");
-		return WICED_ERROR;
-	}
+    wiced_result_t result;
+    if (led >= PLATFORM_LED_MAX)
+    {
+        WICED_BT_TRACE("Invalid LED for platform\n");
+        return WICED_ERROR;
+    }
 
-	result = platform_led_start( &platform_led_config[led] );
+    result = platform_led_start(&platform_led_config[led]);
 
-	return result;
+    return result;
 }
 
 /**
@@ -167,21 +163,21 @@ wiced_result_t wiced_led_manager_enable_led(wiced_led_t led)
  */
 wiced_result_t wiced_led_manager_disable_led(wiced_led_t led)
 {
-	wiced_result_t result;
-	if(led >= PLATFORM_LED_MAX)
-	{
-		WICED_BT_TRACE("Invalid LED for platform\n");
-		return WICED_ERROR;
-	}
-	if(wiced_is_timer_in_use(&led_timer[led].timer))
-	{
-		wiced_stop_timer(&led_timer[led].timer);
-		//wiced_deinit_timer(&led_timer[led].timer);
-	}
+    wiced_result_t result;
+    if (led >= PLATFORM_LED_MAX)
+    {
+        WICED_BT_TRACE("Invalid LED for platform\n");
+        return WICED_ERROR;
+    }
+    if (wiced_is_timer_in_use(&led_timer[led].timer))
+    {
+        wiced_stop_timer(&led_timer[led].timer);
+        // wiced_deinit_timer(&led_timer[led].timer);
+    }
 
-	result = platform_led_stop( &platform_led_config[led] );
+    result = platform_led_stop(&platform_led_config[led]);
 
-	return result;
+    return result;
 }
 
 /**
@@ -190,27 +186,27 @@ wiced_result_t wiced_led_manager_disable_led(wiced_led_t led)
  * @param  config      : Configuration for the LED.
  * @return             : result.
  */
-wiced_result_t wiced_led_manager_reconfig_led( wiced_led_config_t* config)
+wiced_result_t wiced_led_manager_reconfig_led(wiced_led_config_t * config)
 {
-	uint16_t bright;
+    uint16_t bright;
 
-	if(config == NULL)
-		return WICED_ERROR;
+    if (config == NULL)
+        return WICED_ERROR;
 
-	if(config->led >= PLATFORM_LED_MAX)
-	{
-		WICED_BT_TRACE("Invalid LED for platform\n");
-		return WICED_ERROR;
-	}
+    if (config->led >= PLATFORM_LED_MAX)
+    {
+        WICED_BT_TRACE("Invalid LED for platform\n");
+        return WICED_ERROR;
+    }
 
-	bright = config->bright;
+    bright = config->bright;
 
-	if (bright > 99)
-	{
-		bright = 99;
-	}
+    if (bright > 99)
+    {
+        bright = 99;
+    }
 
-	return platform_led_reinit( &platform_led_config[config->led], LED_FREQ, bright);
+    return platform_led_reinit(&platform_led_config[config->led], LED_FREQ, bright);
 }
 
 /**
@@ -221,21 +217,21 @@ wiced_result_t wiced_led_manager_reconfig_led( wiced_led_config_t* config)
  */
 void led_timer_function(uint32_t arg)
 {
-    if(led_timer[arg].led_state == WICED_TRUE)
+    if (led_timer[arg].led_state == WICED_TRUE)
     {
-        //WICED_BT_TRACE("Timer led %d stop\n",led_timer[arg].led);
+        // WICED_BT_TRACE("Timer led %d stop\n",led_timer[arg].led);
         platform_led_stop(&platform_led_config[led_timer[arg].led]);
         led_timer[arg].led_state = WICED_FALSE;
     }
     else
     {
-        platform_led_start( &platform_led_config[led_timer[arg].led]);
-        //WICED_BT_TRACE("Timer led %d start\n",led_timer[arg].led);
+        platform_led_start(&platform_led_config[led_timer[arg].led]);
+        // WICED_BT_TRACE("Timer led %d start\n",led_timer[arg].led);
         led_timer[arg].led_state = WICED_TRUE;
     }
 
     wiced_stop_timer(&led_timer[arg].timer);
-    wiced_start_timer(&led_timer[arg].timer, \
+    wiced_start_timer(&led_timer[arg].timer,
                       led_timer[arg].led_state == WICED_TRUE ? led_timer[arg].on_period : led_timer[arg].off_period);
 }
 
@@ -250,12 +246,12 @@ void led_timer_function(uint32_t arg)
 
 wiced_result_t wiced_led_manager_blink_led(wiced_led_t led, uint32_t on_period, uint32_t off_period)
 {
-	//WICED_BT_TRACE("%s <<\n",__func__);
-	if(led >= PLATFORM_LED_MAX)
-	{
-		WICED_BT_TRACE("Invalid LED for platform\n");
-		return WICED_ERROR;
-	}
+    // WICED_BT_TRACE("%s <<\n",__func__);
+    if (led >= PLATFORM_LED_MAX)
+    {
+        WICED_BT_TRACE("Invalid LED for platform\n");
+        return WICED_ERROR;
+    }
 
     if (led_timer[led].is_init == WICED_FALSE)
     {
@@ -263,18 +259,18 @@ wiced_result_t wiced_led_manager_blink_led(wiced_led_t led, uint32_t on_period, 
         return WICED_ERROR;
     }
 
-	led_timer[led].on_period = on_period;
-	led_timer[led].off_period = off_period;
+    led_timer[led].on_period  = on_period;
+    led_timer[led].off_period = off_period;
 
-	if(WICED_SUCCESS != wiced_led_manager_enable_led(led))
-	{
-		WICED_BT_TRACE("LED enable failed\n");
-		return WICED_ERROR;
-	}
+    if (WICED_SUCCESS != wiced_led_manager_enable_led(led))
+    {
+        WICED_BT_TRACE("LED enable failed\n");
+        return WICED_ERROR;
+    }
 
-	led_timer[led].led_state = WICED_TRUE;
-	wiced_start_timer(&led_timer[led].timer, on_period);
-	//WICED_BT_TRACE("timer started\n");
+    led_timer[led].led_state = WICED_TRUE;
+    wiced_start_timer(&led_timer[led].timer, on_period);
+    // WICED_BT_TRACE("timer started\n");
 
-	return WICED_SUCCESS;
+    return WICED_SUCCESS;
 }

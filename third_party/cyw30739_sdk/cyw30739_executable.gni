@@ -37,8 +37,8 @@ template("cyw30739_executable") {
 
   group(target_name) {
     deps = [
-      ":${target_name}.post_build",
       ":${flashable_target}",
+      ":${target_name}.post_build",
     ]
   }
 
@@ -62,26 +62,20 @@ template("cyw30739_executable") {
   flashing_script_name = output_base_name + ".flash.py"
   flashing_options = [
     "cyw30739",
-    "--sdk-scripts-dir", rebase_path(invoker.cyw30739_sdk_scripts_dir),
-    "--sdk-tools-dir", rebase_path(invoker.cyw30739_sdk_tools_dir),
+    "--sdk-scripts-dir",
+    rebase_path(invoker.cyw30739_sdk_scripts_dir),
+    "--sdk-tools-dir",
+    rebase_path(invoker.cyw30739_sdk_tools_dir),
   ]
 
   flashable_executable(flashable_target) {
     forward_variables_from(invoker, "*")
-    data_deps = [
-      ":${flashing_runtime_target}",
-    ]
+    data_deps = [ ":${flashing_runtime_target}" ]
 
-    deps += [
-      ":${target_name}.pre_build",
-    ]
+    deps += [ ":${target_name}.pre_build" ]
 
-    inputs = [
-      ldscript_file,
-    ]
+    inputs = [ ldscript_file ]
 
-    ldflags = [
-      "-T" + rebase_path(ldscript_file, root_build_dir),
-    ]
+    ldflags = [ "-T" + rebase_path(ldscript_file, root_build_dir) ]
   }
 }

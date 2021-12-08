@@ -34,8 +34,7 @@ namespace DeviceLayer {
 /**
  * Concrete implementation of the PlatformManager singleton object for the platform.
  */
-class PlatformManagerImpl final : public PlatformManager,
-                                  public Internal::GenericPlatformManagerImpl<PlatformManagerImpl>
+class PlatformManagerImpl final : public PlatformManager, public Internal::GenericPlatformManagerImpl<PlatformManagerImpl>
 {
     // Allow the PlatformManager interface class to delegate method calls to
     // the implementation methods provided by this class.
@@ -65,17 +64,17 @@ private:
     friend PlatformManagerImpl & PlatformMgrImpl(void);
 
     wiced_thread_t * mThread;
-    wiced_event_flags_t *mEventFlags;
-    wiced_queue_t *mEventQueue;
+    wiced_event_flags_t * mEventFlags;
+    wiced_queue_t * mEventQueue;
     wiced_timer_t mTimer;
-    wiced_mutex_t *mMutex;
+    wiced_mutex_t * mMutex;
 
     static void EventLoopTaskMain(uint32_t arg);
     static void TimerCallback(WICED_TIMER_PARAM_TYPE params);
     static int GetEntropy(void * data, unsigned char * output, size_t len, size_t * olen);
     static PlatformManagerImpl sInstance;
     static constexpr uint32_t kTimerEventFlag = 1 << 0;
-    static constexpr uint32_t kPostEventFlag = 1 << 1;
+    static constexpr uint32_t kPostEventFlag  = 1 << 1;
 };
 
 /**

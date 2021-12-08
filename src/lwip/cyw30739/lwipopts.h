@@ -29,7 +29,6 @@
 #include <lwip/lwip_buildconfig.h>
 #endif
 
-
 /* NO SYS */
 #define NO_SYS 1
 #define LWIP_TIMERS 0
