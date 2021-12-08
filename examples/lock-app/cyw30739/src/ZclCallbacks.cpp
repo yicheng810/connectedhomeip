@@ -17,7 +17,7 @@
  *    limitations under the License.
  */
 
-#include "LightingManager.h"
+#include <BoltLockManager.h>
 #include <app-common/zap-generated/attributes/Accessors.h>
 #include <platform/CHIPDeviceLayer.h>
 
@@ -49,16 +49,8 @@ void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attrib
         if (attributePath.mAttributeId == OnOff::Attributes::OnOff::Id)
         {
             printf("ZCL OnOff -> %u\n", *value);
-            LightMgr().InitiateAction(LightingManager::ACTOR_ZCL_CMD,
-                                      (*value == 0) ? LightingManager::OFF_ACTION : LightingManager::ON_ACTION, *value);
-            return;
-        }
-        break;
-    case LevelControl::Id:
-        if (attributePath.mAttributeId == LevelControl::Attributes::CurrentLevel::Id)
-        {
-            printf("ZCL CurrentLevel -> %u\n", *value);
-            LightMgr().InitiateAction(LightingManager::ACTOR_ZCL_CMD, LightingManager::LEVEL_ACTION, *value);
+            BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_ZCL_CMD,
+                                         (*value) ? BoltLockManager::LOCK_ACTION : BoltLockManager::UNLOCK_ACTION);
             return;
         }
         break;

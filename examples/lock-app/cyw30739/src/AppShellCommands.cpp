@@ -17,14 +17,14 @@
  *    limitations under the License.
  */
 
-#include "LightingManager.h"
+#include <BoltLockManager.h>
 #include <lib/shell/commands/Help.h>
 #include <platform/CHIPDeviceLayer.h>
 
 using namespace chip::Shell;
 
 static CHIP_ERROR AppCommandHelpHandler(int argc, char * argv[]);
-static CHIP_ERROR AppCommandLightingHandler(int argc, char * argv[]);
+static CHIP_ERROR AppCommandLockHandler(int argc, char * argv[]);
 static CHIP_ERROR AppCommandDispatch(int argc, char * argv[]);
 
 static chip::Shell::Engine sAppSubcommands;
@@ -38,9 +38,9 @@ void RegisterAppShellCommands(void)
             .cmd_help = "Usage: app <subcommand>",
         },
         {
-            .cmd_func = AppCommandLightingHandler,
-            .cmd_name = "light",
-            .cmd_help = "Usage: app light [on|off|toggle]",
+            .cmd_func = AppCommandLockHandler,
+            .cmd_name = "lock",
+            .cmd_help = "Usage: app lock [on|off|toggle]",
         },
     };
 
@@ -61,29 +61,29 @@ CHIP_ERROR AppCommandHelpHandler(int argc, char * argv[])
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR AppCommandLightingHandler(int argc, char * argv[])
+CHIP_ERROR AppCommandLockHandler(int argc, char * argv[])
 {
     if (argc == 0)
     {
-        streamer_printf(streamer_get(), "The light is %s\n", LightMgr().IsLightOn() ? "on" : "off");
+        streamer_printf(streamer_get(), "The lock is %s\n", BoltLockMgr().IsUnlocked() ? "unlocked" : "locked");
     }
     else if (strcmp(argv[0], "on") == 0)
     {
-        streamer_printf(streamer_get(), "Turning the light on ...\n");
-        LightMgr().InitiateAction(LightingManager::ACTOR_APP_CMD, LightingManager::ON_ACTION, 0);
+        streamer_printf(streamer_get(), "Lock ...\n");
+        BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP_CMD, BoltLockManager::LOCK_ACTION);
     }
     else if (strcmp(argv[0], "off") == 0)
     {
-        streamer_printf(streamer_get(), "Turning the light off ...\n");
-        LightMgr().InitiateAction(LightingManager::ACTOR_APP_CMD, LightingManager::OFF_ACTION, 0);
+        streamer_printf(streamer_get(), "Unlock ...\n");
+        BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_BUTTON, BoltLockManager::UNLOCK_ACTION);
     }
     else if (strcmp(argv[0], "toggle") == 0)
     {
-        streamer_printf(streamer_get(), "Toggling the light ...\n");
-        if (LightMgr().IsLightOn())
-            LightMgr().InitiateAction(LightingManager::ACTOR_APP_CMD, LightingManager::OFF_ACTION, 0);
+        streamer_printf(streamer_get(), "Toggling the lock ...\n");
+        if (BoltLockMgr().IsUnlocked())
+            BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP_CMD, BoltLockManager::LOCK_ACTION);
         else
-            LightMgr().InitiateAction(LightingManager::ACTOR_APP_CMD, LightingManager::ON_ACTION, 0);
+            BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_BUTTON, BoltLockManager::UNLOCK_ACTION);
     }
     else
     {

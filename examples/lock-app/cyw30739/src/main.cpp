@@ -17,9 +17,10 @@
  *    limitations under the License.
  */
 #include <AppShellCommands.h>
+#include <BoltLockManager.h>
 #include <ButtonHandler.h>
 #include <ChipShellCollection.h>
-#include <LightingManager.h>
+#include <app-common/zap-generated/attributes/Accessors.h>
 #include <app/server/Server.h>
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 #include <lib/shell/Engine.h>
@@ -37,21 +38,36 @@ using namespace ::chip::Credentials;
 using namespace ::chip::DeviceLayer;
 using namespace ::chip::Shell;
 
+wiced_bool_t syncClusterToButtonAction = false;
+
 static void EventHandler(const ChipDeviceEvent * event, intptr_t arg);
 static void HandleThreadStateChangeEvent(const ChipDeviceEvent * event);
-static void LightManagerCallback(LightingManager::Actor_t actor, LightingManager::Action_t action, uint8_t value);
+static void ActionInitiated(BoltLockManager::Action_t aAction, int32_t aActor);
+static void ActionCompleted(BoltLockManager::Action_t aAction);
+static void WriteClusterState(uint8_t value);
 
-static wiced_led_config_t chip_lighting_led_config = {
-    .led    = PLATFORM_LED_1,
-    .bright = 50,
+#ifndef _countof
+#define _countof(a) (sizeof(a) / sizeof(a[0]))
+#endif
+
+static wiced_led_config_t chip_lighting_led_config[2] = {
+    {
+        .led    = PLATFORM_LED_1,
+        .bright = 50,
+    },
+    {
+        .led    = PLATFORM_LED_2,
+        .bright = 50,
+    },
 };
 
 APPLICATION_START()
 {
     CHIP_ERROR err;
     wiced_result_t result;
+    uint32_t i;
 
-    printf("\nChipLighting App starting\n");
+    printf("\nChipLock App starting\n");
 
     mbedtls_platform_set_calloc_free(CHIPPlatformMemoryCalloc, CHIPPlatformMemoryFree);
 
@@ -68,9 +84,12 @@ APPLICATION_START()
     }
 
     /* Init. LED Manager. */
-    result = wiced_led_manager_init(&chip_lighting_led_config);
-    if (result != WICED_SUCCESS)
-        printf("wiced_led_manager_init fail (%d)\n", result);
+    for (i = 0; i < _countof(chip_lighting_led_config); i++)
+    {
+        result = wiced_led_manager_init(&chip_lighting_led_config[i]);
+        if (result != WICED_SUCCESS)
+            printf("wiced_led_manager_init fail i=%ld, (%d)\n", i, result);
+    }
 
     printf("Initializing CHIP\n");
     err = PlatformMgr().InitChipStack();
@@ -88,11 +107,7 @@ APPLICATION_START()
     }
 #endif
 
-#if CHIP_DEVICE_CONFIG_THREAD_FTD
     err = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_Router);
-#else  // !CHIP_DEVICE_CONFIG_THREAD_FTD
-    err = ConnectivityMgr().SetThreadDeviceType(ConnectivityManager::kThreadDeviceType_MinimalEndDevice);
-#endif // CHIP_DEVICE_CONFIG_THREAD_FTD
     if (err != CHIP_NO_ERROR)
     {
         printf("ERROR SetThreadDeviceType %ld\n", err.AsInteger());
@@ -116,13 +131,18 @@ APPLICATION_START()
 
     PlatformMgrImpl().AddEventHandler(EventHandler, 0);
 
-    LightMgr().Init();
-    LightMgr().SetCallbacks(LightManagerCallback, NULL);
-
     /* Start CHIP datamodel server */
     chip::Server::GetInstance().Init();
 
     SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+
+    err = BoltLockMgr().Init();
+    if (err != CHIP_NO_ERROR)
+    {
+        printf("BoltLockMgr().Init() failed\n");
+    }
+
+    BoltLockMgr().SetCallbacks(ActionInitiated, ActionCompleted);
 
     ConfigurationMgr().LogDeviceConfig();
 
@@ -160,22 +180,57 @@ void HandleThreadStateChangeEvent(const ChipDeviceEvent * event)
 #endif /* CHIP_BYPASS_RENDEZVOUS */
 }
 
-void LightManagerCallback(LightingManager::Actor_t actor, LightingManager::Action_t action, uint8_t level)
+void ActionInitiated(BoltLockManager::Action_t aAction, int32_t aActor)
 {
-    if (action == LightingManager::ON_ACTION)
+    // If the action has been initiated by the lock, update the bolt lock trait
+    // and start flashing the LEDs rapidly to indicate action initiation.
+    if (aAction == BoltLockManager::LOCK_ACTION)
     {
-        printf("Turning light ON\n");
+        printf("Lock Action has been initiated\n");
+    }
+    else if (aAction == BoltLockManager::UNLOCK_ACTION)
+    {
+        printf("Unlock Action has been initiated\n");
+    }
+
+    if (aActor == BoltLockManager::ACTOR_BUTTON)
+    {
+        syncClusterToButtonAction = true;
+    }
+
+    wiced_led_manager_enable_led(PLATFORM_LED_2);
+}
+
+void ActionCompleted(BoltLockManager::Action_t aAction)
+{
+    // if the action has been completed by the lock, update the bolt lock trait.
+    // Turn on the lock LED if in a LOCKED state OR
+    // Turn off the lock LED if in an UNLOCKED state.
+    if (aAction == BoltLockManager::LOCK_ACTION)
+    {
+        printf("Lock Action has been completed\n");
         wiced_led_manager_enable_led(PLATFORM_LED_1);
     }
-    else if (action == LightingManager::OFF_ACTION)
+    else if (aAction == BoltLockManager::UNLOCK_ACTION)
     {
-        printf("Turning light OFF\n");
+        printf("Unlock Action has been completed\n");
         wiced_led_manager_disable_led(PLATFORM_LED_1);
     }
-    else if (action == LightingManager::LEVEL_ACTION)
+
+    if (syncClusterToButtonAction)
     {
-        printf("Set light level = %d\n", level);
-        chip_lighting_led_config.bright = (uint16_t) level * 100 / 0xfe;
-        wiced_led_manager_reconfig_led(&chip_lighting_led_config);
+        WriteClusterState(!BoltLockMgr().IsUnlocked());
+        syncClusterToButtonAction = false;
+    }
+
+    wiced_led_manager_disable_led(PLATFORM_LED_2);
+}
+
+void WriteClusterState(uint8_t value)
+{
+    const EmberAfStatus status = chip::app::Clusters::OnOff::Attributes::OnOff::Set(1, value);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        printf("Error WriteServerAttribute 0x%02x\n", status);
     }
 }
