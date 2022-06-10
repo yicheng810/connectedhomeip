@@ -16,6 +16,7 @@
 #
 
 import argparse
+import base64
 from collections import namedtuple
 import configparser
 import logging
@@ -78,6 +79,10 @@ def checkout_modules(modules: list, shallow: bool, force: bool) -> None:
     names = [module.name.replace('submodule "', '').replace('"', '') for module in modules]
     names = ', '.join(names)
     logging.info(f'Checking out: {names}')
+
+    credential = base64.b64encode(('x-access-token:' + os.environ['MATTER_TOKEN']).encode(encoding='utf-8'))
+    subprocess.check_call(['git', 'config', '--global', '--add', 'http.https://github.com/.extraheader',
+                           'AUTHORIZATION: basic ' + str(credential, encoding='utf-8')])
 
     cmd = ['git', '-C', CHIP_ROOT, 'submodule', 'update', '--init']
     cmd += ['--depth', '1'] if shallow else []
