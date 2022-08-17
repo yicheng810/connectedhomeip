@@ -84,6 +84,8 @@ def checkout_modules(modules: list, shallow: bool, force: bool) -> None:
     subprocess.check_call(['git', 'config', '--global', '--add', 'http.https://github.com/.extraheader',
                            'AUTHORIZATION: basic ' + str(credential, encoding='utf-8')])
 
+    subprocess.check_call(['git', 'config', '--global', '--add', 'url.https://github.com/.insteadOf', 'git@github.com:'])
+
     cmd = ['git', '-C', CHIP_ROOT, 'submodule', 'update', '--init']
     cmd += ['--depth', '1'] if shallow else []
     cmd += ['--force'] if force else []

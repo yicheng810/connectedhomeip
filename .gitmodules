@@ -82,7 +82,7 @@
 	platforms = efr32
 [submodule "third_party/openthread/ot-ifx"]
 	path = third_party/openthread/ot-ifx
-	url = https://github.com/Infineon/ot-ifx.git
+	url = git@github.com:Infineon/ot-ifx.git
 	platforms = cyw30739
 [submodule "third_party/mbed-os/repo"]
 	path = third_party/mbed-os/repo
@@ -197,7 +197,7 @@
 	url = https://github.com/open-source-parsers/jsoncpp.git
 [submodule "cyw30739_sdk/30739A0"]
 	path = third_party/cyw30739_sdk/repos/30739A0
-	url = https://github.com/Infineon/MatterCSP.git
+	url = git@github.com:Infineon/MatterCSP.git
 	platforms = cyw30739
 [submodule "cyw30739_sdk/include"]
 	path = third_party/cyw30739_sdk/repos/btsdk-include
@@ -205,7 +205,7 @@
 	platforms = cyw30739
 [submodule "cyw30739_sdk/target"]
 	path = third_party/cyw30739_sdk/repos/CYW930739M2EVB-01
-	url = https://github.com/Infineon/MatterBSP.git
+	url = git@github.com:Infineon/MatterBSP.git
 	platforms = cyw30739
 [submodule "cyw30739_sdk/tools"]
 	path = third_party/cyw30739_sdk/repos/btsdk-tools
