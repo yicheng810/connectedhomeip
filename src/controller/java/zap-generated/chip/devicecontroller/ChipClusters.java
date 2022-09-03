@@ -16188,6 +16188,14 @@ public class ChipClusters {
       default void onSubscriptionEstablished() {}
     }
 
+    public interface StartUpColorTemperatureMiredsAttributeCallback {
+      void onSuccess(@Nullable Integer value);
+
+      void onError(Exception ex);
+
+      default void onSubscriptionEstablished() {}
+    }
+
     public interface GeneratedCommandListAttributeCallback {
       void onSuccess(List<Long> valueList);
 
@@ -16275,13 +16283,13 @@ public class ChipClusters {
       subscribeCompensationTextAttribute(chipClusterPtr, callback, minInterval, maxInterval);
     }
 
-    public void readColorTemperatureAttribute(IntegerAttributeCallback callback) {
-      readColorTemperatureAttribute(chipClusterPtr, callback);
+    public void readColorTemperatureMiredsAttribute(IntegerAttributeCallback callback) {
+      readColorTemperatureMiredsAttribute(chipClusterPtr, callback);
     }
 
-    public void subscribeColorTemperatureAttribute(
+    public void subscribeColorTemperatureMiredsAttribute(
         IntegerAttributeCallback callback, int minInterval, int maxInterval) {
-      subscribeColorTemperatureAttribute(chipClusterPtr, callback, minInterval, maxInterval);
+      subscribeColorTemperatureMiredsAttribute(chipClusterPtr, callback, minInterval, maxInterval);
     }
 
     public void readColorModeAttribute(IntegerAttributeCallback callback) {
@@ -16784,7 +16792,8 @@ public class ChipClusters {
           chipClusterPtr, callback, minInterval, maxInterval);
     }
 
-    public void readStartUpColorTemperatureMiredsAttribute(IntegerAttributeCallback callback) {
+    public void readStartUpColorTemperatureMiredsAttribute(
+        StartUpColorTemperatureMiredsAttributeCallback callback) {
       readStartUpColorTemperatureMiredsAttribute(chipClusterPtr, callback);
     }
 
@@ -16800,7 +16809,7 @@ public class ChipClusters {
     }
 
     public void subscribeStartUpColorTemperatureMiredsAttribute(
-        IntegerAttributeCallback callback, int minInterval, int maxInterval) {
+        StartUpColorTemperatureMiredsAttributeCallback callback, int minInterval, int maxInterval) {
       subscribeStartUpColorTemperatureMiredsAttribute(
           chipClusterPtr, callback, minInterval, maxInterval);
     }
@@ -16895,10 +16904,10 @@ public class ChipClusters {
         int minInterval,
         int maxInterval);
 
-    private native void readColorTemperatureAttribute(
+    private native void readColorTemperatureMiredsAttribute(
         long chipClusterPtr, IntegerAttributeCallback callback);
 
-    private native void subscribeColorTemperatureAttribute(
+    private native void subscribeColorTemperatureMiredsAttribute(
         long chipClusterPtr, IntegerAttributeCallback callback, int minInterval, int maxInterval);
 
     private native void readColorModeAttribute(
@@ -17262,7 +17271,7 @@ public class ChipClusters {
         long chipClusterPtr, IntegerAttributeCallback callback, int minInterval, int maxInterval);
 
     private native void readStartUpColorTemperatureMiredsAttribute(
-        long chipClusterPtr, IntegerAttributeCallback callback);
+        long chipClusterPtr, StartUpColorTemperatureMiredsAttributeCallback callback);
 
     private native void writeStartUpColorTemperatureMiredsAttribute(
         long chipClusterPtr,
@@ -17271,7 +17280,10 @@ public class ChipClusters {
         @Nullable Integer timedWriteTimeoutMs);
 
     private native void subscribeStartUpColorTemperatureMiredsAttribute(
-        long chipClusterPtr, IntegerAttributeCallback callback, int minInterval, int maxInterval);
+        long chipClusterPtr,
+        StartUpColorTemperatureMiredsAttributeCallback callback,
+        int minInterval,
+        int maxInterval);
 
     private native void readGeneratedCommandListAttribute(
         long chipClusterPtr, GeneratedCommandListAttributeCallback callback);

@@ -49,7 +49,7 @@ typedef NS_ENUM(NSUInteger, MTROptionalQRCodeInfoType) {
 @property (nonatomic, copy) NSString * stringValue;
 @end
 
-@interface MTRSetupPayload : NSObject
+@interface MTRSetupPayload : NSObject <NSSecureCoding>
 
 @property (nonatomic, copy) NSNumber * version;
 @property (nonatomic, copy) NSNumber * vendorID;
@@ -61,7 +61,7 @@ typedef NS_ENUM(NSUInteger, MTROptionalQRCodeInfoType) {
  *
  * Otherwise its value is made up of the MTRDiscoveryCapabilities flags.
  */
-@property (nonatomic, assign, nullable) NSNumber * rendezvousInformation;
+@property (nonatomic, copy, nullable) NSNumber * rendezvousInformation;
 @property (nonatomic, copy) NSNumber * discriminator;
 @property (nonatomic, assign) BOOL hasShortDiscriminator;
 @property (nonatomic, copy) NSNumber * setUpPINCode;
@@ -73,6 +73,10 @@ typedef NS_ENUM(NSUInteger, MTROptionalQRCodeInfoType) {
  * Generate a random Matter-valid setup PIN.
  */
 + (NSUInteger)generateRandomPIN;
+
+/** Get 11 digit manual entry code from the setup payload. */
+- (nullable NSString *)manualEntryCode;
+
 @end
 
 NS_ASSUME_NONNULL_END

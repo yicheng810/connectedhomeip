@@ -252,17 +252,20 @@ void UDPEndPointImplLwIP::CloseImpl()
         mUDP              = nullptr;
         mLwIPEndPointType = LwIPEndPointType::Unknown;
 
-        // In case that there is a UDPEndPointImplLwIP::LwIPReceiveUDPMessage
+        // If there is a UDPEndPointImplLwIP::LwIPReceiveUDPMessage
         // event pending in the event queue (SystemLayer::ScheduleLambda), we
         // schedule a release call to the end of the queue, to ensure that the
         // queued pointer to UDPEndPointImplLwIP is not dangling.
-        Retain();
-        CHIP_ERROR err = GetSystemLayer().ScheduleLambda([this] { Release(); });
-        if (err != CHIP_NO_ERROR)
+        if (mDelayReleaseCount != 0)
         {
-            ChipLogError(Inet, "Unable scedule lambda: %" CHIP_ERROR_FORMAT, err.Format());
-            // There is nothing we can do here, accept the chance of racing
-            Release();
+            Retain();
+            CHIP_ERROR err = GetSystemLayer().ScheduleLambda([this] { Release(); });
+            if (err != CHIP_NO_ERROR)
+            {
+                ChipLogError(Inet, "Unable to schedule lambda: %" CHIP_ERROR_FORMAT, err.Format());
+                // There is nothing we can do here, accept the chance of racing
+                Release();
+            }
         }
     }
 
@@ -276,12 +279,10 @@ void UDPEndPointImplLwIP::Free()
     Release();
 }
 
-void UDPEndPointImplLwIP::HandleDataReceived(System::PacketBufferHandle && msg)
+void UDPEndPointImplLwIP::HandleDataReceived(System::PacketBufferHandle && msg, IPPacketInfo * pktInfo)
 {
     if ((mState == State::kListening) && (OnMessageReceived != nullptr))
     {
-        const IPPacketInfo * pktInfo = GetPacketInfo(msg);
-
         if (pktInfo != nullptr)
         {
             const IPPacketInfo pktInfoCopy = *pktInfo; // copy the address info so that the app can free the
@@ -296,6 +297,7 @@ void UDPEndPointImplLwIP::HandleDataReceived(System::PacketBufferHandle && msg)
             }
         }
     }
+    Platform::Delete(pktInfo);
 }
 
 CHIP_ERROR UDPEndPointImplLwIP::GetPCB(IPAddressType addrType)
@@ -364,37 +366,53 @@ void UDPEndPointImplLwIP::LwIPReceiveUDPMessage(void * arg, struct udp_pcb * pcb
 {
     Platform::UniquePtr<struct pbuf> pbufFreeGuard(p);
     UDPEndPointImplLwIP * ep = static_cast<UDPEndPointImplLwIP *>(arg);
-    IPPacketInfo * pktInfo   = nullptr;
     if (ep->mState == State::kClosed)
     {
         return;
     }
+
+    auto pktInfo = Platform::MakeUnique<IPPacketInfo>();
+    if (pktInfo.get() == nullptr)
+    {
+        ChipLogError(Inet, "Cannot allocate packet info");
+        return;
+    }
+
     // TODO: Skip copying the buffer if the pbuf already meets the PacketBuffer memory model
-    System::PacketBufferHandle buf = System::PacketBufferHandle::New(p->tot_len);
+    System::PacketBufferHandle buf = System::PacketBufferHandle::New(p->tot_len, 0);
     if (buf.IsNull() || pbuf_copy_partial(p, buf->Start(), p->tot_len, 0) != p->tot_len)
     {
         ChipLogError(Inet, "Cannot copy received pbuf of size %u", p->tot_len);
+        return;
     }
     buf->SetDataLength(p->tot_len);
 
-    pktInfo = GetPacketInfo(buf);
-    if (pktInfo != nullptr)
-    {
-        pktInfo->SrcAddress  = IPAddress(*addr);
-        pktInfo->DestAddress = IPAddress(*ip_current_dest_addr());
-        pktInfo->Interface   = InterfaceId(ip_current_netif());
-        pktInfo->SrcPort     = port;
-        pktInfo->DestPort    = pcb->local_port;
-    }
+    pktInfo->SrcAddress  = IPAddress(*addr);
+    pktInfo->DestAddress = IPAddress(*ip_current_dest_addr());
+    pktInfo->Interface   = InterfaceId(ip_current_netif());
+    pktInfo->SrcPort     = port;
+    pktInfo->DestPort    = pcb->local_port;
 
-    CHIP_ERROR err = ep->GetSystemLayer().ScheduleLambda([ep, p = System::LwIPPacketBufferView::UnsafeGetLwIPpbuf(buf)] {
-        ep->HandleDataReceived(System::PacketBufferHandle::Adopt(p));
-    });
+    // Increase mDelayReleaseCount to delay release of this UDP EndPoint while the HandleDataReceived call is
+    // pending on it.
+    ep->mDelayReleaseCount++;
+
+    CHIP_ERROR err = ep->GetSystemLayer().ScheduleLambda(
+        [ep, p = System::LwIPPacketBufferView::UnsafeGetLwIPpbuf(buf), pktInfo = pktInfo.get()] {
+            ep->mDelayReleaseCount--;
+            ep->HandleDataReceived(System::PacketBufferHandle::Adopt(p), pktInfo);
+        });
 
     if (err == CHIP_NO_ERROR)
     {
         // If ScheduleLambda() succeeded, it has ownership of the buffer, so we need to release it (without freeing it).
         static_cast<void>(std::move(buf).UnsafeRelease());
+        // Similarly, ScheduleLambda now has ownership of pktInfo.
+        pktInfo.release();
+    }
+    else
+    {
+        ep->mDelayReleaseCount--;
     }
 }
 
@@ -497,20 +515,6 @@ struct netif * UDPEndPointImplLwIP::FindNetifFromInterfaceId(InterfaceId aInterf
 #endif // defined(NETIF_FOREACH)
 
     return (lRetval);
-}
-
-IPPacketInfo * UDPEndPointImplLwIP::GetPacketInfo(const System::PacketBufferHandle & aBuffer)
-{
-    if (!aBuffer->EnsureReservedSize(sizeof(IPPacketInfo) + 3))
-    {
-        return nullptr;
-    }
-
-    uintptr_t lStart           = (uintptr_t) aBuffer->Start();
-    uintptr_t lPacketInfoStart = lStart - sizeof(IPPacketInfo);
-
-    // Align to a 4-byte boundary
-    return reinterpret_cast<IPPacketInfo *>(lPacketInfoStart & ~(sizeof(uint32_t) - 1));
 }
 
 } // namespace Inet
