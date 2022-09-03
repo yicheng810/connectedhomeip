@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <app/ConcreteClusterPath.h>
 #include <app/util/basic-types.h>
 
 namespace chip {
@@ -26,33 +27,31 @@ namespace app {
 /**
  * A representation of a concrete event path.
  */
-struct ConcreteEventPath
+struct ConcreteEventPath : public ConcreteClusterPath
 {
     ConcreteEventPath(EndpointId aEndpointId, ClusterId aClusterId, EventId aEventId) :
-        mEndpointId(aEndpointId), mClusterId(aClusterId), mEventId(aEventId)
+        ConcreteClusterPath(aEndpointId, aClusterId), mEventId(aEventId)
     {}
 
     ConcreteEventPath() {}
 
-    ConcreteEventPath & operator=(const ConcreteEventPath & other)
-    {
-        if (&other == this)
-            return *this;
+    ConcreteEventPath(const ConcreteEventPath & aOther) = default;
+    ConcreteEventPath & operator=(const ConcreteEventPath & aOther) = default;
 
-        mEndpointId = other.mEndpointId;
-        mClusterId  = other.mClusterId;
-        mEventId    = other.mEventId;
-        return *this;
+    bool operator==(const ConcreteEventPath & aOther) const
+    {
+        return ConcreteClusterPath::operator==(aOther) && (mEventId == aOther.mEventId);
     }
 
-    bool operator==(const ConcreteEventPath & other) const
+    bool operator!=(const ConcreteEventPath & aOther) const { return !(*this == aOther); }
+
+    bool operator<(const ConcreteEventPath & path) const
     {
-        return mEndpointId == other.mEndpointId && mClusterId == other.mClusterId && mEventId == other.mEventId;
+        return (mEndpointId < path.mEndpointId) || ((mEndpointId == path.mEndpointId) && (mClusterId < path.mClusterId)) ||
+            ((mEndpointId == path.mEndpointId) && (mClusterId == path.mClusterId) && (mEventId < path.mEventId));
     }
 
-    EndpointId mEndpointId = 0;
-    ClusterId mClusterId   = 0;
-    EventId mEventId       = 0;
+    EventId mEventId = 0;
 };
 } // namespace app
 } // namespace chip

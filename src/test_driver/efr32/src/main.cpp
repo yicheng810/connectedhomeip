@@ -44,7 +44,7 @@ extern "C" int printf(const char * format, ...)
 
 namespace chip::rpc {
 
-class NlTest : public generated::NlTest<NlTest>
+class NlTest : public pw_rpc::nanopb::NlTest::Service<NlTest>
 {
 public:
     void Run(const pw_protobuf_Empty & request, ServerWriter<chip_rpc_Event> & writer)
@@ -186,7 +186,6 @@ int main(void)
     mbedtls_platform_set_calloc_free(CHIPPlatformMemoryCalloc, CHIPPlatformMemoryFree);
 
     chip::Platform::MemoryInit();
-    chip::DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl().Init();
 
     chip::DeviceLayer::PlatformMgr().InitChipStack();
 

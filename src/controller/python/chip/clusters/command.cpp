@@ -32,9 +32,11 @@ using namespace chip::app;
 using PyObject = void *;
 
 extern "C" {
-chip::ChipError::StorageType pychip_CommandSender_SendCommand(void * appContext, DeviceProxy * device, chip::EndpointId endpointId,
+chip::ChipError::StorageType pychip_CommandSender_SendCommand(void * appContext, DeviceProxy * device,
+                                                              uint16_t timedRequestTimeoutMs, chip::EndpointId endpointId,
                                                               chip::ClusterId clusterId, chip::CommandId commandId,
-                                                              const uint8_t * payload, size_t length);
+                                                              const uint8_t * payload, size_t length,
+                                                              uint16_t interactionTimeoutMs);
 }
 
 namespace chip {
@@ -70,12 +72,10 @@ public:
             // Python need to read from full TLV data the TLVReader may contain some unclean states.
             TLV::TLVWriter writer;
             writer.Init(buffer);
-            CHIP_ERROR err = writer.CopyContainer(TLV::AnonymousTag, *aData);
+            CHIP_ERROR err = writer.CopyContainer(TLV::AnonymousTag(), *aData);
             if (err != CHIP_NO_ERROR)
             {
-                app::StatusIB status;
-                status.mStatus = Protocols::InteractionModel::Status::Failure;
-                this->OnError(apCommandSender, aStatus, err);
+                this->OnError(apCommandSender, err);
                 return;
             }
             size = writer.GetLengthWritten();
@@ -87,12 +87,16 @@ public:
             size);
     }
 
-    void OnError(const CommandSender * apCommandSender, const app::StatusIB & aStatus, CHIP_ERROR aProtocolError) override
+    void OnError(const CommandSender * apCommandSender, CHIP_ERROR aProtocolError) override
     {
-        gOnCommandSenderErrorCallback(mAppContext, to_underlying(aStatus.mStatus),
-                                      aStatus.mClusterStatus.HasValue() ? aStatus.mClusterStatus.Value()
-                                                                        : chip::python::kUndefinedClusterStatus,
-                                      aProtocolError.AsInteger());
+        StatusIB status(aProtocolError);
+        gOnCommandSenderErrorCallback(mAppContext, to_underlying(status.mStatus),
+                                      status.mClusterStatus.ValueOr(chip::python::kUndefinedClusterStatus),
+                                      // If we have an actual IM status, pass 0
+                                      // for the error code, because otherwise
+                                      // the callee will think we have a stack
+                                      // exception.
+                                      aProtocolError.IsIMStatus() ? 0 : aProtocolError.AsInteger());
     }
 
     void OnDone(CommandSender * apCommandSender) override
@@ -121,38 +125,40 @@ void pychip_CommandSender_InitCallbacks(OnCommandSenderResponseCallback onComman
     gOnCommandSenderDoneCallback     = onCommandSenderDoneCallback;
 }
 
-chip::ChipError::StorageType pychip_CommandSender_SendCommand(void * appContext, DeviceProxy * device, chip::EndpointId endpointId,
+chip::ChipError::StorageType pychip_CommandSender_SendCommand(void * appContext, DeviceProxy * device,
+                                                              uint16_t timedRequestTimeoutMs, chip::EndpointId endpointId,
                                                               chip::ClusterId clusterId, chip::CommandId commandId,
-                                                              const uint8_t * payload, size_t length)
+                                                              const uint8_t * payload, size_t length, uint16_t interactionTimeoutMs)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
+    VerifyOrReturnError(device->GetSecureSession().HasValue(), CHIP_ERROR_MISSING_SECURE_SESSION.AsInteger());
+
     std::unique_ptr<CommandSenderCallback> callback = std::make_unique<CommandSenderCallback>(appContext);
-    std::unique_ptr<CommandSender> sender           = std::make_unique<CommandSender>(callback.get(), device->GetExchangeManager());
+    std::unique_ptr<CommandSender> sender           = std::make_unique<CommandSender>(callback.get(), device->GetExchangeManager(),
+                                                                            /* is timed request */ timedRequestTimeoutMs != 0);
 
     app::CommandPathParams cmdParams = { endpointId, /* group id */ 0, clusterId, commandId,
                                          (app::CommandPathFlags::kEndpointIdValid) };
 
-    SuccessOrExit(err = sender->PrepareCommand(cmdParams));
+    SuccessOrExit(err = sender->PrepareCommand(cmdParams, false));
 
     {
         auto writer = sender->GetCommandDataIBTLVWriter();
         TLV::TLVReader reader;
-        TLV::TLVType type;
         VerifyOrExit(writer != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
         reader.Init(payload, length);
         reader.Next();
-        reader.EnterContainer(type);
-        while (reader.Next() == CHIP_NO_ERROR)
-        {
-            TLV::TLVReader tReader;
-            tReader.Init(reader);
-            writer->CopyElement(tReader);
-        }
+        SuccessOrExit(writer->CopyContainer(TLV::ContextTag(to_underlying(CommandDataIB::Tag::kFields)), reader));
     }
 
-    SuccessOrExit(err = sender->FinishCommand());
-    SuccessOrExit(err = device->SendCommands(sender.get()));
+    SuccessOrExit(err = sender->FinishCommand(timedRequestTimeoutMs != 0 ? Optional<uint16_t>(timedRequestTimeoutMs)
+                                                                         : Optional<uint16_t>::Missing()));
+
+    SuccessOrExit(err = sender->SendCommandRequest(device->GetSecureSession().Value(),
+                                                   interactionTimeoutMs != 0
+                                                       ? MakeOptional(System::Clock::Milliseconds32(interactionTimeoutMs))
+                                                       : Optional<System::Clock::Timeout>::Missing()));
 
     sender.release();
     callback.release();

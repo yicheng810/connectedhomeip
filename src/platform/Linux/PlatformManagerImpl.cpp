@@ -25,22 +25,31 @@
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
 #include <app-common/zap-generated/enums.h>
+#include <app-common/zap-generated/ids/Events.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/logging/CHIPLogging.h>
+#include <platform/DeviceControlServer.h>
+#include <platform/DeviceInstanceInfoProvider.h>
+#include <platform/Linux/DeviceInstanceInfoProviderImpl.h>
 #include <platform/Linux/DiagnosticDataProviderImpl.h>
 #include <platform/PlatformManager.h>
-#include <platform/internal/GenericPlatformManagerImpl_POSIX.cpp>
+#include <platform/internal/GenericPlatformManagerImpl_POSIX.ipp>
 
 #include <thread>
 
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <errno.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <netinet/in.h>
-#include <signal.h>
 #include <unistd.h>
+
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
 
 using namespace ::chip::app::Clusters;
 
@@ -50,64 +59,6 @@ namespace DeviceLayer {
 PlatformManagerImpl PlatformManagerImpl::sInstance;
 
 namespace {
-
-void SignalHandler(int signum)
-{
-    CHIP_ERROR err = CHIP_NO_ERROR;
-
-    ChipLogDetail(DeviceLayer, "Caught signal %d", signum);
-
-    // The BootReason attribute SHALL indicate the reason for the Node’s most recent boot, the real usecase
-    // for this attribute is embedded system. In Linux simulation, we use different signals to tell the current
-    // running process to terminate with different reasons.
-    switch (signum)
-    {
-    case SIGINT:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_SOFTWARE_RESET);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGHUP:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_BROWN_OUT_RESET);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGTERM:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_POWER_ON_REBOOT);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGUSR1:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_HARDWARE_WATCHDOG_RESET);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGUSR2:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_SOFTWARE_WATCHDOG_RESET);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGTSTP:
-        ConfigurationMgr().StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_SOFTWARE_UPDATE_COMPLETED);
-        err = CHIP_ERROR_REBOOT_SIGNAL_RECEIVED;
-        break;
-    case SIGTRAP:
-        PlatformMgrImpl().HandleSoftwareFault(SoftwareDiagnostics::Events::SoftwareFault::kEventId);
-        break;
-    case SIGILL:
-        PlatformMgrImpl().HandleGeneralFault(GeneralDiagnostics::Events::HardwareFaultChange::kEventId);
-        break;
-    case SIGALRM:
-        PlatformMgrImpl().HandleGeneralFault(GeneralDiagnostics::Events::RadioFaultChange::kEventId);
-        break;
-    case SIGVTALRM:
-        PlatformMgrImpl().HandleGeneralFault(GeneralDiagnostics::Events::NetworkFaultChange::kEventId);
-        break;
-    default:
-        break;
-    }
-
-    if (err == CHIP_ERROR_REBOOT_SIGNAL_RECEIVED)
-    {
-        PlatformMgr().Shutdown();
-        exit(EXIT_FAILURE);
-    }
-}
 
 #if CHIP_WITH_GIO
 void GDBus_Thread()
@@ -160,21 +111,38 @@ void PlatformManagerImpl::WiFIIPChangeListener()
                     if (routeInfo->rta_type == IFA_LOCAL)
                     {
                         char name[IFNAMSIZ];
-                        ChipDeviceEvent event;
-                        if_indextoname(addressMessage->ifa_index, name);
+                        if (if_indextoname(addressMessage->ifa_index, name) == nullptr)
+                        {
+                            ChipLogError(DeviceLayer, "Error %d when getting the interface name at index: %d", errno,
+                                         addressMessage->ifa_index);
+                            continue;
+                        }
+
+                        if (ConnectivityManagerImpl::GetWiFiIfName() == nullptr)
+                        {
+                            ChipLogDetail(DeviceLayer, "No wifi interface name. Ignoring IP update event.");
+                            continue;
+                        }
+
                         if (strcmp(name, ConnectivityManagerImpl::GetWiFiIfName()) != 0)
                         {
                             continue;
                         }
 
+                        char ipStrBuf[chip::Inet::IPAddress::kMaxStringLength] = { 0 };
+                        inet_ntop(AF_INET, RTA_DATA(routeInfo), ipStrBuf, sizeof(ipStrBuf));
+                        ChipLogDetail(DeviceLayer, "Got IP address on interface: %s IP: %s", name, ipStrBuf);
+
+                        ChipDeviceEvent event;
                         event.Type                            = DeviceEventType::kInternetConnectivityChange;
                         event.InternetConnectivityChange.IPv4 = kConnectivity_Established;
                         event.InternetConnectivityChange.IPv6 = kConnectivity_NoChange;
-                        inet_ntop(AF_INET, RTA_DATA(routeInfo), event.InternetConnectivityChange.address,
-                                  sizeof(event.InternetConnectivityChange.address));
 
-                        ChipLogDetail(DeviceLayer, "Got IP address on interface: %s IP: %s", name,
-                                      event.InternetConnectivityChange.address);
+                        if (!chip::Inet::IPAddress::FromString(ipStrBuf, event.InternetConnectivityChange.ipAddress))
+                        {
+                            ChipLogDetail(DeviceLayer, "Failed to report IP address - ip address parsing failed");
+                            continue;
+                        }
 
                         CHIP_ERROR status = PlatformMgr().PostEvent(&event);
                         if (status != CHIP_NO_ERROR)
@@ -191,18 +159,6 @@ void PlatformManagerImpl::WiFIIPChangeListener()
 
 CHIP_ERROR PlatformManagerImpl::_InitChipStack()
 {
-    CHIP_ERROR err;
-    struct sigaction action;
-
-    memset(&action, 0, sizeof(action));
-    action.sa_handler = SignalHandler;
-    sigaction(SIGINT, &action, NULL);
-    sigaction(SIGHUP, &action, NULL);
-    sigaction(SIGTERM, &action, NULL);
-    sigaction(SIGUSR1, &action, NULL);
-    sigaction(SIGUSR2, &action, NULL);
-    sigaction(SIGTSTP, &action, NULL);
-
 #if CHIP_WITH_GIO
     GError * error = nullptr;
 
@@ -218,25 +174,22 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack()
 #endif
 
     // Initialize the configuration system.
-    err = Internal::PosixConfig::Init();
-    SuccessOrExit(err);
-    SetConfigurationMgr(&ConfigurationManagerImpl::GetDefaultInstance());
-    SetDiagnosticDataProvider(&DiagnosticDataProviderImpl::GetDefaultInstance());
+    ReturnErrorOnFailure(Internal::PosixConfig::Init());
 
     // Call _InitChipStack() on the generic implementation base class
     // to finish the initialization process.
-    err = Internal::GenericPlatformManagerImpl_POSIX<PlatformManagerImpl>::_InitChipStack();
-    SuccessOrExit(err);
+    ReturnErrorOnFailure(Internal::GenericPlatformManagerImpl_POSIX<PlatformManagerImpl>::_InitChipStack());
+
+    // Now set up our device instance info provider.  We couldn't do that
+    // earlier, because the generic implementation sets a generic one.
+    SetDeviceInstanceInfoProvider(&DeviceInstanceInfoProviderMgrImpl());
 
     mStartTime = System::SystemClock().GetMonotonicTimestamp();
 
-    ScheduleWork(HandleDeviceRebooted, 0);
-
-exit:
-    return err;
+    return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR PlatformManagerImpl::_Shutdown()
+void PlatformManagerImpl::_Shutdown()
 {
     uint64_t upTime = 0;
 
@@ -258,101 +211,7 @@ CHIP_ERROR PlatformManagerImpl::_Shutdown()
         ChipLogError(DeviceLayer, "Failed to get current uptime since the Node’s last reboot");
     }
 
-    return Internal::GenericPlatformManagerImpl_POSIX<PlatformManagerImpl>::_Shutdown();
-}
-
-void PlatformManagerImpl::HandleDeviceRebooted(intptr_t arg)
-{
-    GeneralDiagnosticsDelegate * delegate = GetDiagnosticDataProvider().GetGeneralDiagnosticsDelegate();
-
-    if (delegate != nullptr)
-    {
-        delegate->OnDeviceRebooted();
-    }
-}
-
-void PlatformManagerImpl::HandleGeneralFault(uint32_t EventId)
-{
-    GeneralDiagnosticsDelegate * delegate = GetDiagnosticDataProvider().GetGeneralDiagnosticsDelegate();
-
-    if (delegate == nullptr)
-    {
-        ChipLogError(DeviceLayer, "No delegate registered to handle General Diagnostics event");
-        return;
-    }
-
-    if (EventId == GeneralDiagnostics::Events::HardwareFaultChange::kEventId)
-    {
-        GeneralFaults<kMaxHardwareFaults> previous;
-        GeneralFaults<kMaxHardwareFaults> current;
-
-#if CHIP_CONFIG_TEST
-        // On Linux Simulation, set following hardware faults statically.
-        ReturnOnFailure(previous.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_RADIO));
-        ReturnOnFailure(previous.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_POWER_SOURCE));
-
-        ReturnOnFailure(current.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_RADIO));
-        ReturnOnFailure(current.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_SENSOR));
-        ReturnOnFailure(current.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_POWER_SOURCE));
-        ReturnOnFailure(current.add(EMBER_ZCL_HARDWARE_FAULT_TYPE_USER_INTERFACE_FAULT));
-#endif
-        delegate->OnHardwareFaultsDetected(previous, current);
-    }
-    else if (EventId == GeneralDiagnostics::Events::RadioFaultChange::kEventId)
-    {
-        GeneralFaults<kMaxRadioFaults> previous;
-        GeneralFaults<kMaxRadioFaults> current;
-
-#if CHIP_CONFIG_TEST
-        // On Linux Simulation, set following radio faults statically.
-        ReturnOnFailure(previous.add(EMBER_ZCL_RADIO_FAULT_TYPE_WI_FI_FAULT));
-        ReturnOnFailure(previous.add(EMBER_ZCL_RADIO_FAULT_TYPE_THREAD_FAULT));
-
-        ReturnOnFailure(current.add(EMBER_ZCL_RADIO_FAULT_TYPE_WI_FI_FAULT));
-        ReturnOnFailure(current.add(EMBER_ZCL_RADIO_FAULT_TYPE_CELLULAR_FAULT));
-        ReturnOnFailure(current.add(EMBER_ZCL_RADIO_FAULT_TYPE_THREAD_FAULT));
-        ReturnOnFailure(current.add(EMBER_ZCL_RADIO_FAULT_TYPE_NFC_FAULT));
-#endif
-        delegate->OnRadioFaultsDetected(previous, current);
-    }
-    else if (EventId == GeneralDiagnostics::Events::NetworkFaultChange::kEventId)
-    {
-        GeneralFaults<kMaxNetworkFaults> previous;
-        GeneralFaults<kMaxNetworkFaults> current;
-
-#if CHIP_CONFIG_TEST
-        // On Linux Simulation, set following radio faults statically.
-        ReturnOnFailure(previous.add(EMBER_ZCL_NETWORK_FAULT_TYPE_HARDWARE_FAILURE));
-        ReturnOnFailure(previous.add(EMBER_ZCL_NETWORK_FAULT_TYPE_NETWORK_JAMMED));
-
-        ReturnOnFailure(current.add(EMBER_ZCL_NETWORK_FAULT_TYPE_HARDWARE_FAILURE));
-        ReturnOnFailure(current.add(EMBER_ZCL_NETWORK_FAULT_TYPE_NETWORK_JAMMED));
-        ReturnOnFailure(current.add(EMBER_ZCL_NETWORK_FAULT_TYPE_CONNECTION_FAILED));
-#endif
-        delegate->OnNetworkFaultsDetected(previous, current);
-    }
-    else
-    {
-    }
-}
-
-void PlatformManagerImpl::HandleSoftwareFault(uint32_t EventId)
-{
-    SoftwareDiagnosticsDelegate * delegate = GetDiagnosticDataProvider().GetSoftwareDiagnosticsDelegate();
-
-    if (delegate != nullptr)
-    {
-        SoftwareDiagnostics::Structs::SoftwareFault::Type softwareFault;
-        char threadName[kMaxThreadNameLength + 1];
-
-        softwareFault.id = gettid();
-        strncpy(threadName, std::to_string(softwareFault.id).c_str(), kMaxThreadNameLength);
-        threadName[kMaxThreadNameLength] = '\0';
-        softwareFault.name               = CharSpan(threadName, strlen(threadName));
-        softwareFault.faultRecording     = ByteSpan(Uint8::from_const_char("FaultRecording"), strlen("FaultRecording"));
-
-        delegate->OnSoftwareFaultDetected(softwareFault);
-    }
+    Internal::GenericPlatformManagerImpl_POSIX<PlatformManagerImpl>::_Shutdown();
 }
 
 #if CHIP_WITH_GIO

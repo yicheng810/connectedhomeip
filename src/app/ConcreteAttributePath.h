@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <app/ConcreteClusterPath.h>
 #include <app/util/basic-types.h>
 #include <lib/core/Optional.h>
 
@@ -26,22 +27,40 @@ namespace app {
 
 /**
  * A representation of a concrete attribute path. This does not convey any list index specifiers.
+ *
+ * The expanded flag can be set to indicate that a concrete path was expanded from a wildcard
+ * or group path.
  */
-struct ConcreteAttributePath
+struct ConcreteAttributePath : public ConcreteClusterPath
 {
-    ConcreteAttributePath() {}
-
-    ConcreteAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId) :
-        mEndpointId(aEndpointId), mClusterId(aClusterId), mAttributeId(aAttributeId)
-    {}
-
-    bool operator==(const ConcreteAttributePath & other) const
+    ConcreteAttributePath()
     {
-        return mEndpointId == other.mEndpointId && mClusterId == other.mClusterId && mAttributeId == other.mAttributeId;
+        // Note: mExpanded is in the superclass, so we can't use a field
+        // initializer.
+        mExpanded = false;
     }
 
-    EndpointId mEndpointId   = 0;
-    ClusterId mClusterId     = 0;
+    ConcreteAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId) :
+        ConcreteClusterPath(aEndpointId, aClusterId), mAttributeId(aAttributeId)
+    {
+        // Note: mExpanded is in the supercclass, so we can't use a field
+        // initializer.
+        mExpanded = false;
+    }
+
+    bool operator==(const ConcreteAttributePath & aOther) const
+    {
+        return ConcreteClusterPath::operator==(aOther) && (mAttributeId == aOther.mAttributeId);
+    }
+
+    bool operator!=(const ConcreteAttributePath & aOther) const { return !(*this == aOther); }
+
+    bool operator<(const ConcreteAttributePath & path) const
+    {
+        return (mEndpointId < path.mEndpointId) || ((mEndpointId == path.mEndpointId) && (mClusterId < path.mClusterId)) ||
+            ((mEndpointId == path.mEndpointId) && (mClusterId == path.mClusterId) && (mAttributeId < path.mAttributeId));
+    }
+
     AttributeId mAttributeId = 0;
 };
 
@@ -54,9 +73,7 @@ struct ConcreteReadAttributePath : public ConcreteAttributePath
 {
     ConcreteReadAttributePath() {}
 
-    ConcreteReadAttributePath(const ConcreteAttributePath & path) :
-        ConcreteReadAttributePath(path.mEndpointId, path.mClusterId, path.mAttributeId)
-    {}
+    ConcreteReadAttributePath(const ConcreteAttributePath & path) : ConcreteAttributePath(path) {}
 
     ConcreteReadAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId) :
         ConcreteAttributePath(aEndpointId, aClusterId, aAttributeId)
@@ -90,8 +107,16 @@ struct ConcreteDataAttributePath : public ConcreteAttributePath
 
     ConcreteDataAttributePath() {}
 
+    ConcreteDataAttributePath(const ConcreteAttributePath & path) : ConcreteAttributePath(path) {}
+
     ConcreteDataAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId) :
         ConcreteAttributePath(aEndpointId, aClusterId, aAttributeId)
+    {}
+
+    ConcreteDataAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId,
+                              const Optional<DataVersion> & aDataVersion) :
+        ConcreteAttributePath(aEndpointId, aClusterId, aAttributeId),
+        mDataVersion(aDataVersion)
     {}
 
     ConcreteDataAttributePath(EndpointId aEndpointId, ClusterId aClusterId, AttributeId aAttributeId, ListOperation aListOp,
@@ -109,8 +134,9 @@ struct ConcreteDataAttributePath : public ConcreteAttributePath
     // This index is only valid if `mListOp` is set to a list item operation, i.e
     // ReplaceItem, DeleteItem or AppendItem. Otherwise, it is to be ignored.
     //
-    uint16_t mListIndex   = 0;
-    ListOperation mListOp = ListOperation::NotList;
+    uint16_t mListIndex                = 0;
+    ListOperation mListOp              = ListOperation::NotList;
+    Optional<DataVersion> mDataVersion = NullOptional;
 };
 
 } // namespace app

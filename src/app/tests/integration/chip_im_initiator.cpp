@@ -126,18 +126,17 @@ void HandleSubscribeReportComplete()
            static_cast<double>(transitTime.count()) / 1000);
 }
 
-class MockInteractionModelApp : public chip::app::InteractionModelDelegate,
-                                public ::chip::app::CommandSender::Callback,
+class MockInteractionModelApp : public ::chip::app::CommandSender::Callback,
                                 public ::chip::app::WriteClient::Callback,
                                 public ::chip::app::ReadClient::Callback
 {
 public:
-    void OnEventData(const chip::app::ReadClient * apReadClient, const chip::app::EventHeader & aEventHeader,
-                     chip::TLV::TLVReader * apData, const chip::app::StatusIB * apStatus) override
+    void OnEventData(const chip::app::EventHeader & aEventHeader, chip::TLV::TLVReader * apData,
+                     const chip::app::StatusIB * apStatus) override
     {}
-    void OnSubscriptionEstablished(const chip::app::ReadClient * apReadClient) override
+    void OnSubscriptionEstablished(chip::SubscriptionId aSubscriptionId) override
     {
-        if (apReadClient->IsSubscriptionType())
+        if (mReadClient->IsSubscriptionType())
         {
             gSubReportCount++;
             if (gSubReportCount == gSubMaxReport)
@@ -146,20 +145,26 @@ public:
             }
         }
     }
-    void OnAttributeData(const chip::app::ReadClient * apReadClient, const chip::app::ConcreteDataAttributePath & aPath,
-                         chip::TLV::TLVReader * aData, const chip::app::StatusIB & status) override
+
+    void OnAttributeData(const chip::app::ConcreteDataAttributePath & aPath, chip::TLV::TLVReader * aData,
+                         const chip::app::StatusIB & status) override
     {}
 
-    void OnError(const chip::app::ReadClient * apReadClient, CHIP_ERROR aError) override
-    {
-        printf("ReadError with err %" CHIP_ERROR_FORMAT, aError.Format());
-    }
+    void OnError(CHIP_ERROR aError) override { printf("ReadError with err %" CHIP_ERROR_FORMAT, aError.Format()); }
+
     void OnDone(chip::app::ReadClient * apReadClient) override
     {
-        if (!apReadClient->IsSubscriptionType())
+        if (apReadClient != mReadClient.get())
+        {
+            printf("Unexpected read client.");
+        }
+
+        if (!mReadClient->IsSubscriptionType())
         {
             HandleReadComplete();
         }
+
+        mReadClient.reset();
     }
 
     void OnResponse(chip::app::CommandSender * apCommandSender, const chip::app::ConcreteCommandPath & aPath,
@@ -178,15 +183,15 @@ public:
                static_cast<double>(gCommandRespCount) * 100 / static_cast<double>(gCommandCount),
                static_cast<double>(transitTime.count()) / 1000);
     }
-    void OnError(const chip::app::CommandSender * apCommandSender, const chip::app::StatusIB & aStatus, CHIP_ERROR aError) override
+    void OnError(const chip::app::CommandSender * apCommandSender, CHIP_ERROR aError) override
     {
-        gCommandRespCount += (aError == CHIP_ERROR_IM_STATUS_CODE_RECEIVED);
+        gCommandRespCount += (aError.IsIMStatus());
         gLastCommandResult = TestCommandResult::kFailure;
         printf("CommandResponseError happens with %" CHIP_ERROR_FORMAT, aError.Format());
     }
-    void OnDone(chip::app::CommandSender * apCommandSender) override {}
+    void OnDone(chip::app::CommandSender * apCommandSender) override { delete apCommandSender; }
 
-    void OnResponse(const chip::app::WriteClient * apWriteClient, const chip::app::ConcreteAttributePath & path,
+    void OnResponse(const chip::app::WriteClient * apWriteClient, const chip::app::ConcreteDataAttributePath & path,
                     chip::app::StatusIB status) override
     {
         auto respTime                                   = chip::System::SystemClock().GetMonotonicTimestamp();
@@ -198,11 +203,31 @@ public:
                static_cast<double>(gWriteRespCount) * 100 / static_cast<double>(gWriteCount),
                static_cast<double>(transitTime.count()) / 1000);
     }
-    void OnError(const chip::app::WriteClient * apCommandSender, const chip::app::StatusIB &, CHIP_ERROR aError) override
+    void OnError(const chip::app::WriteClient * apCommandSender, CHIP_ERROR aError) override
     {
         printf("WriteClient::OnError happens with %" CHIP_ERROR_FORMAT, aError.Format());
     }
     void OnDone(chip::app::WriteClient * apWriteClient) override {}
+
+    void AdoptReadClient(chip::Platform::UniquePtr<chip::app::ReadClient> apReadClient) { mReadClient = std::move(apReadClient); }
+
+    void Shutdown() { mReadClient.reset(); }
+
+    void OnDeallocatePaths(chip::app::ReadPrepareParams && aReadPrepareParams) override
+    {
+        if (aReadPrepareParams.mpAttributePathParamsList != nullptr)
+        {
+            delete[] aReadPrepareParams.mpAttributePathParamsList;
+        }
+
+        if (aReadPrepareParams.mpEventPathParamsList != nullptr)
+        {
+            delete[] aReadPrepareParams.mpEventPathParamsList;
+        }
+    }
+
+private:
+    chip::Platform::UniquePtr<chip::app::ReadClient> mReadClient;
 };
 
 MockInteractionModelApp gMockDelegate;
@@ -247,7 +272,7 @@ CHIP_ERROR SendCommandRequest(std::unique_ptr<chip::app::CommandSender> && comma
     err = commandSender->FinishCommand();
     SuccessOrExit(err);
 
-    err = commandSender->SendCommandRequest(gSessionManager.FindSecureSessionForNode(chip::kTestDeviceNodeId), gMessageTimeout);
+    err = commandSender->SendCommandRequest(gSession.Get().Value(), chip::MakeOptional(gMessageTimeout));
     SuccessOrExit(err);
 
     gCommandCount++;
@@ -283,7 +308,7 @@ CHIP_ERROR SendBadCommandRequest(std::unique_ptr<chip::app::CommandSender> && co
     err = commandSender->FinishCommand();
     SuccessOrExit(err);
 
-    err = commandSender->SendCommandRequest(gSessionManager.FindSecureSessionForNode(chip::kTestDeviceNodeId), gMessageTimeout);
+    err = commandSender->SendCommandRequest(gSession.Get().Value(), chip::MakeOptional(gMessageTimeout));
     SuccessOrExit(err);
     gCommandCount++;
     commandSender.release();
@@ -311,14 +336,20 @@ CHIP_ERROR SendReadRequest()
 
     printf("\nSend read request message to Node: %" PRIu64 "\n", chip::kTestDeviceNodeId);
 
-    chip::app::ReadPrepareParams readPrepareParams(chip::SessionHandle(chip::kTestDeviceNodeId, 1, 1, gFabricIndex));
+    chip::app::ReadPrepareParams readPrepareParams(gSession.Get().Value());
     readPrepareParams.mTimeout                     = gMessageTimeout;
     readPrepareParams.mpAttributePathParamsList    = &attributePathParams;
     readPrepareParams.mAttributePathParamsListSize = 1;
     readPrepareParams.mpEventPathParamsList        = eventPathParams;
     readPrepareParams.mEventPathParamsListSize     = 2;
-    err = chip::app::InteractionModelEngine::GetInstance()->SendReadRequest(readPrepareParams, &gMockDelegate);
-    SuccessOrExit(err);
+
+    auto readClient =
+        chip::Platform::MakeUnique<chip::app::ReadClient>(chip::app::InteractionModelEngine::GetInstance(), &gExchangeManager,
+                                                          gMockDelegate, chip::app::ReadClient::InteractionType::Read);
+
+    SuccessOrExit(readClient->SendRequest(readPrepareParams));
+
+    gMockDelegate.AdoptReadClient(std::move(readClient));
 
 exit:
     if (err == CHIP_NO_ERROR)
@@ -329,31 +360,20 @@ exit:
     {
         printf("Send read request failed, err: %s\n", chip::ErrorStr(err));
     }
+
     return err;
 }
 
-CHIP_ERROR SendWriteRequest(chip::app::WriteClientHandle & apWriteClient)
+CHIP_ERROR SendWriteRequest(chip::app::WriteClient & apWriteClient)
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-    chip::TLV::TLVWriter * writer;
+    CHIP_ERROR err   = CHIP_NO_ERROR;
     gLastMessageTime = chip::System::SystemClock().GetMonotonicTimestamp();
-    chip::app::AttributePathParams attributePathParams;
 
     printf("\nSend write request message to Node: %" PRIu64 "\n", chip::kTestDeviceNodeId);
 
-    attributePathParams.mEndpointId  = 2;
-    attributePathParams.mClusterId   = 3;
-    attributePathParams.mAttributeId = 4;
-
-    SuccessOrExit(err = apWriteClient->PrepareAttribute(attributePathParams));
-
-    writer = apWriteClient->GetAttributeDataIBTLVWriter();
-
-    SuccessOrExit(err =
-                      writer->PutBoolean(chip::TLV::ContextTag(chip::to_underlying(chip::app::AttributeDataIB::Tag::kData)), true));
-    SuccessOrExit(err = apWriteClient->FinishAttribute());
-    SuccessOrExit(
-        err = apWriteClient.SendWriteRequest(gSessionManager.FindSecureSessionForNode(chip::kTestDeviceNodeId), gMessageTimeout));
+    SuccessOrExit(err = apWriteClient.EncodeAttribute(
+                      chip::app::AttributePathParams(2 /* endpoint */, 3 /* cluster */, 4 /* attribute */), true));
+    SuccessOrExit(err = apWriteClient.SendWriteRequest(gSession.Get().Value(), gMessageTimeout));
 
     gWriteCount++;
 
@@ -370,9 +390,9 @@ CHIP_ERROR SendSubscribeRequest()
     CHIP_ERROR err   = CHIP_NO_ERROR;
     gLastMessageTime = chip::System::SystemClock().GetMonotonicTimestamp();
 
-    chip::app::ReadPrepareParams readPrepareParams(chip::SessionHandle(chip::kTestDeviceNodeId, 1, 1, gFabricIndex));
-    chip::app::EventPathParams eventPathParams[2];
-    chip::app::AttributePathParams attributePathParams[1];
+    chip::app::ReadPrepareParams readPrepareParams(gSession.Get().Value());
+    chip::app::EventPathParams * eventPathParams           = new chip::app::EventPathParams[2];
+    chip::app::AttributePathParams * attributePathParams   = new chip::app::AttributePathParams[1];
     readPrepareParams.mpEventPathParamsList                = eventPathParams;
     readPrepareParams.mpEventPathParamsList[0].mEndpointId = kTestEndpointId;
     readPrepareParams.mpEventPathParamsList[0].mClusterId  = kTestClusterId;
@@ -391,16 +411,21 @@ CHIP_ERROR SendSubscribeRequest()
 
     readPrepareParams.mAttributePathParamsListSize = 1;
 
-    readPrepareParams.mMinIntervalFloorSeconds   = 2;
+    readPrepareParams.mMinIntervalFloorSeconds   = 5;
     readPrepareParams.mMaxIntervalCeilingSeconds = 5;
+
     printf("\nSend subscribe request message to Node: %" PRIu64 "\n", chip::kTestDeviceNodeId);
 
-    err = chip::app::InteractionModelEngine::GetInstance()->SendSubscribeRequest(readPrepareParams, &gMockDelegate);
-    SuccessOrExit(err);
+    auto readClient =
+        chip::Platform::MakeUnique<chip::app::ReadClient>(chip::app::InteractionModelEngine::GetInstance(), &gExchangeManager,
+                                                          gMockDelegate, chip::app::ReadClient::InteractionType::Subscribe);
+
+    err = readClient->SendAutoResubscribeRequest(std::move(readPrepareParams));
+
+    gMockDelegate.AdoptReadClient(std::move(readClient));
 
     gSubCount++;
 
-exit:
     if (err != CHIP_NO_ERROR)
     {
         printf("Send subscribe request failed, err: %s\n", chip::ErrorStr(err));
@@ -410,18 +435,10 @@ exit:
 
 CHIP_ERROR EstablishSecureSession()
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-
-    chip::SecurePairingUsingTestSecret * testSecurePairingSecret = chip::Platform::New<chip::SecurePairingUsingTestSecret>();
-    VerifyOrExit(testSecurePairingSecret != nullptr, err = CHIP_ERROR_NO_MEMORY);
-
     // Attempt to connect to the peer.
-    err = gSessionManager.NewPairing(chip::Optional<chip::Transport::PeerAddress>::Value(
-                                         chip::Transport::PeerAddress::UDP(gDestAddr, CHIP_PORT, chip::Inet::InterfaceId::Null())),
-                                     chip::kTestDeviceNodeId, testSecurePairingSecret, chip::CryptoContext::SessionRole::kInitiator,
-                                     gFabricIndex);
-
-exit:
+    chip::Transport::PeerAddress peer = chip::Transport::PeerAddress::UDP(gDestAddr, CHIP_PORT, chip::Inet::InterfaceId::Null());
+    CHIP_ERROR err = gSessionManager.InjectPaseSessionWithTestKey(gSession, 1, chip::kTestDeviceNodeId, 1, gFabricIndex, peer,
+                                                                  chip::CryptoContext::SessionRole::kInitiator);
     if (err != CHIP_NO_ERROR)
     {
         printf("Establish secure session failed, err: %s\n", chip::ErrorStr(err));
@@ -455,12 +472,12 @@ void CommandRequestTimerHandler(chip::System::Layer * systemLayer, void * appSta
         err = SendCommandRequest(std::move(commandSender));
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to send command request with error: %s\n", chip::ErrorStr(err)));
 
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, CommandRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, CommandRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
     else
     {
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, BadCommandRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, BadCommandRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
 
@@ -481,7 +498,7 @@ void BadCommandRequestTimerHandler(chip::System::Layer * systemLayer, void * app
     err = SendBadCommandRequest(std::move(commandSender));
     VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to send bad command request with error: %s\n", chip::ErrorStr(err)));
 
-    err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, ReadRequestTimerHandler, NULL);
+    err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, ReadRequestTimerHandler, nullptr);
     VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
 
 exit:
@@ -508,12 +525,12 @@ void ReadRequestTimerHandler(chip::System::Layer * systemLayer, void * appState)
         err = SendReadRequest();
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to send read request with error: %s\n", chip::ErrorStr(err)));
 
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, ReadRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, ReadRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
     else
     {
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, WriteRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, WriteRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
 
@@ -538,19 +555,19 @@ void WriteRequestTimerHandler(chip::System::Layer * systemLayer, void * appState
 
     if (gWriteRespCount < kMaxWriteMessageCount)
     {
-        chip::app::WriteClientHandle writeClient;
-        err = chip::app::InteractionModelEngine::GetInstance()->NewWriteClient(writeClient, &gMockDelegate);
+        chip::app::WriteClient writeClient(chip::app::InteractionModelEngine::GetInstance()->GetExchangeManager(), &gMockDelegate,
+                                           chip::Optional<uint16_t>::Missing());
         SuccessOrExit(err);
 
         err = SendWriteRequest(writeClient);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to send write request with error: %s\n", chip::ErrorStr(err)));
 
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, WriteRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gMessageInterval, WriteRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
     else
     {
-        err = chip::DeviceLayer::SystemLayer().StartTimer(gSubscribeRequestMessageTimeout, SubscribeRequestTimerHandler, NULL);
+        err = chip::DeviceLayer::SystemLayer().StartTimer(gSubscribeRequestMessageTimeout, SubscribeRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
 
@@ -578,7 +595,8 @@ void SubscribeRequestTimerHandler(chip::System::Layer * systemLayer, void * appS
         err = SendSubscribeRequest();
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to send write request with error: %s\n", chip::ErrorStr(err)));
 
-        err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(20), SubscribeRequestTimerHandler, NULL);
+        err =
+            chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(20), SubscribeRequestTimerHandler, nullptr);
         VerifyOrExit(err == CHIP_NO_ERROR, printf("Failed to schedule timer with error: %s\n", chip::ErrorStr(err)));
     }
     else
@@ -597,10 +615,10 @@ exit:
 
 namespace chip {
 namespace app {
-bool ServerClusterCommandExists(const ConcreteCommandPath & aCommandPath)
+Protocols::InteractionModel::Status ServerClusterCommandExists(const ConcreteCommandPath & aCommandPath)
 {
-    // Always return true in test.
-    return true;
+    // Always return success in test.
+    return Protocols::InteractionModel::Status::Success;
 }
 
 void DispatchSingleClusterCommand(const ConcreteCommandPath & aCommandPath, chip::TLV::TLVReader & aReader,
@@ -609,25 +627,8 @@ void DispatchSingleClusterCommand(const ConcreteCommandPath & aCommandPath, chip
     // Nothing todo.
 }
 
-void DispatchSingleClusterResponseCommand(const ConcreteCommandPath & aCommandPath, chip::TLV::TLVReader & aReader,
-                                          CommandSender * apCommandObj)
-{
-    if (aCommandPath.mClusterId != kTestClusterId || aCommandPath.mCommandId != kTestCommandId ||
-        aCommandPath.mEndpointId != kTestEndpointId)
-    {
-        return;
-    }
-
-    if (aReader.GetLength() != 0)
-    {
-        chip::TLV::Debug::Dump(aReader, TLVPrettyPrinter);
-    }
-
-    gLastCommandResult = TestCommandResult::kSuccess;
-}
-
-CHIP_ERROR ReadSingleClusterData(FabricIndex aAccessingFabricIndex, const ConcreteReadAttributePath & aPath,
-                                 AttributeReportIBs::Builder & aAttributeReports,
+CHIP_ERROR ReadSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, bool aIsFabricFiltered,
+                                 const ConcreteReadAttributePath & aPath, AttributeReportIBs::Builder & aAttributeReports,
                                  AttributeValueEncoder::AttributeEncodeState * apEncoderState)
 {
     AttributeReportIB::Builder & attributeReport = aAttributeReports.CreateAttributeReport();
@@ -646,9 +647,17 @@ CHIP_ERROR ReadSingleClusterData(FabricIndex aAccessingFabricIndex, const Concre
     return attributeReport.EndOfAttributeReportIB().GetError();
 }
 
-CHIP_ERROR WriteSingleClusterData(ClusterInfo & aClusterInfo, TLV::TLVReader & aReader, WriteHandler *)
+const EmberAfAttributeMetadata * GetAttributeMetadata(const ConcreteAttributePath & aConcreteClusterPath)
 {
-    if (aClusterInfo.mClusterId != kTestClusterId || aClusterInfo.mEndpointId != kTestEndpointId)
+    // Note: This test does not make use of the real attribute metadata.
+    static EmberAfAttributeMetadata stub = { .defaultValue = EmberAfDefaultOrMinMaxAttributeValue(uint32_t(0)) };
+    return &stub;
+}
+
+CHIP_ERROR WriteSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, const ConcreteDataAttributePath & aPath,
+                                  TLV::TLVReader & aReader, WriteHandler *)
+{
+    if (aPath.mClusterId != kTestClusterId || aPath.mEndpointId != kTestEndpointId)
     {
         return CHIP_ERROR_INVALID_ARGUMENT;
     }
@@ -659,6 +668,17 @@ CHIP_ERROR WriteSingleClusterData(ClusterInfo & aClusterInfo, TLV::TLVReader & a
     }
     return CHIP_NO_ERROR;
 }
+
+bool IsClusterDataVersionEqual(const ConcreteClusterPath & aConcreteClusterPath, DataVersion aRequiredVersion)
+{
+    return true;
+}
+
+bool IsDeviceTypeOnEndpoint(DeviceTypeId deviceType, EndpointId endpoint)
+{
+    return false;
+}
+
 } // namespace app
 } // namespace chip
 
@@ -685,12 +705,13 @@ int main(int argc, char * argv[])
 
     InitializeChip();
 
-    err = gTransportManager.Init(chip::Transport::UdpListenParameters(&chip::DeviceLayer::InetLayer())
+    err = gTransportManager.Init(chip::Transport::UdpListenParameters(chip::DeviceLayer::UDPEndPointManager())
                                      .SetAddressType(chip::Inet::IPAddressType::kIPv6)
                                      .SetListenPort(IM_CLIENT_PORT));
     SuccessOrExit(err);
 
-    err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gTransportManager, &gMessageCounterManager);
+    err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gTransportManager, &gMessageCounterManager, &gStorage,
+                               &gFabricTable);
     SuccessOrExit(err);
 
     err = gExchangeManager.Init(&gSessionManager);
@@ -699,17 +720,19 @@ int main(int argc, char * argv[])
     err = gMessageCounterManager.Init(&gExchangeManager);
     SuccessOrExit(err);
 
-    err = chip::app::InteractionModelEngine::GetInstance()->Init(&gExchangeManager, &gMockDelegate);
+    err = chip::app::InteractionModelEngine::GetInstance()->Init(&gExchangeManager, &gFabricTable);
     SuccessOrExit(err);
 
     // Start the CHIP connection to the CHIP im responder.
     err = EstablishSecureSession();
     SuccessOrExit(err);
 
-    err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::kZero, CommandRequestTimerHandler, NULL);
+    err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::kZero, CommandRequestTimerHandler, nullptr);
     SuccessOrExit(err);
 
     chip::DeviceLayer::PlatformMgr().RunEventLoop();
+
+    gMockDelegate.Shutdown();
 
     chip::app::InteractionModelEngine::GetInstance()->Shutdown();
     gTransportManager.Close();

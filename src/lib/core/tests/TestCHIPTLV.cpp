@@ -36,8 +36,10 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/ScopedBuffer.h>
+#include <lib/support/UnitTestContext.h>
 #include <lib/support/UnitTestRegistration.h>
 #include <lib/support/UnitTestUtils.h>
+#include <lib/support/logging/Constants.h>
 
 #include <system/TLVPacketBufferBackingStore.h>
 
@@ -199,9 +201,11 @@ void ForEachElement(nlTestSuite * inSuite, TLVReader & reader, void * context,
 
 struct TestTLVContext
 {
-    nlTestSuite * mSuite;
-    int mEvictionCount;
-    uint32_t mEvictedBytes;
+    nlTestSuite * mSuite   = nullptr;
+    int mEvictionCount     = 0;
+    uint32_t mEvictedBytes = 0;
+
+    TestTLVContext(nlTestSuite * suite) : mSuite(suite) {}
 };
 
 void TestNull(nlTestSuite * inSuite, TLVReader & reader, Tag tag)
@@ -236,13 +240,15 @@ void TestDupString(nlTestSuite * inSuite, TLVReader & reader, Tag tag, const cha
     size_t expectedLen = strlen(expectedVal);
     NL_TEST_ASSERT(inSuite, reader.GetLength() == expectedLen);
 
-    chip::Platform::ScopedMemoryBuffer<char> valBuffer;
-    char * val = valBuffer.Alloc(expectedLen + 1).Get();
-
+    char * val     = nullptr;
     CHIP_ERROR err = reader.DupString(val);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
-
-    NL_TEST_ASSERT(inSuite, memcmp(val, expectedVal, expectedLen + 1) == 0);
+    NL_TEST_ASSERT(inSuite, val != nullptr);
+    if (val != nullptr)
+    {
+        NL_TEST_ASSERT(inSuite, memcmp(val, expectedVal, expectedLen + 1) == 0);
+    }
+    chip::Platform::MemoryFree(val);
 }
 
 void TestDupBytes(nlTestSuite * inSuite, TLVReader & reader, Tag tag, const uint8_t * expectedVal, uint32_t expectedLen)
@@ -252,12 +258,15 @@ void TestDupBytes(nlTestSuite * inSuite, TLVReader & reader, Tag tag, const uint
 
     NL_TEST_ASSERT(inSuite, reader.GetLength() == expectedLen);
 
-    chip::Platform::ScopedMemoryBuffer<uint8_t> valBuffer;
-    uint8_t * val  = valBuffer.Alloc(expectedLen).Get();
+    uint8_t * val  = nullptr;
     CHIP_ERROR err = reader.DupBytes(val, expectedLen);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
-
-    NL_TEST_ASSERT(inSuite, memcmp(val, expectedVal, expectedLen) == 0);
+    NL_TEST_ASSERT(inSuite, val != nullptr);
+    if (val != nullptr)
+    {
+        NL_TEST_ASSERT(inSuite, memcmp(val, expectedVal, expectedLen) == 0);
+    }
+    chip::Platform::MemoryFree(val);
 }
 
 void TestBufferContents(nlTestSuite * inSuite, const System::PacketBufferHandle & buffer, const uint8_t * expectedVal,
@@ -364,40 +373,40 @@ static CHIP_ERROR WriteIntMinMax(nlTestSuite * inSuite, TLVWriter & writer)
 {
     CHIP_ERROR err;
 
-    err = writer.Put(AnonymousTag, static_cast<int8_t>(INT8_MIN));
+    err = writer.Put(AnonymousTag(), static_cast<int8_t>(INT8_MIN));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int8_t>(INT8_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<int8_t>(INT8_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int16_t>(INT16_MIN));
+    err = writer.Put(AnonymousTag(), static_cast<int16_t>(INT16_MIN));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int16_t>(INT16_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<int16_t>(INT16_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int32_t>(INT32_MIN));
+    err = writer.Put(AnonymousTag(), static_cast<int32_t>(INT32_MIN));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int32_t>(INT32_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<int32_t>(INT32_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int64_t>(INT64_MIN));
+    err = writer.Put(AnonymousTag(), static_cast<int64_t>(INT64_MIN));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<int64_t>(INT64_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<int64_t>(INT64_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<uint8_t>(UINT8_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<uint8_t>(UINT8_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<uint16_t>(UINT16_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<uint16_t>(UINT16_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<uint32_t>(UINT32_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<uint32_t>(UINT32_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.Put(AnonymousTag, static_cast<uint64_t>(UINT64_MAX));
+    err = writer.Put(AnonymousTag(), static_cast<uint64_t>(UINT64_MAX));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     return err;
@@ -405,159 +414,159 @@ static CHIP_ERROR WriteIntMinMax(nlTestSuite * inSuite, TLVWriter & writer)
 
 static void CheckIntMinMax(nlTestSuite * inSuite, TLVReader & reader)
 {
-    // Writer did Put(AnonymousTag, static_cast<int8_t>(INT8_MIN))
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(INT8_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(INT8_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT8_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT8_MIN));
+    // Writer did Put(AnonymousTag(), static_cast<int8_t>(INT8_MIN))
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(INT8_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(INT8_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT8_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT8_MIN));
 
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-
-    TestNext<TLVReader>(inSuite, reader);
-
-    // Writer did Put(AnonymousTag, static_cast<int8_t>(INT8_MAX))
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(INT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(INT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT8_MAX));
-
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<int16_t>(INT16_MIN))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(INT16_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT16_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT16_MIN));
+    // Writer did Put(AnonymousTag(), static_cast<int8_t>(INT8_MAX))
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(INT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(INT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT8_MAX));
 
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-
-    TestNext<TLVReader>(inSuite, reader);
-
-    // Writer did Put(AnonymousTag, static_cast<int16_t>(INT16_MAX))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(INT16_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT16_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT16_MAX));
-
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<int32_t>(INT32_MIN))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT32_MIN));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT32_MIN));
+    // Writer did Put(AnonymousTag(), static_cast<int16_t>(INT16_MIN))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(INT16_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT16_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT16_MIN));
 
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-
-    TestNext<TLVReader>(inSuite, reader);
-
-    // Writer did Put(AnonymousTag, static_cast<int32_t>(INT32_MAX))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(INT32_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT32_MAX));
-
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<int64_t>(INT64_MIN))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT64_MIN));
+    // Writer did Put(AnonymousTag(), static_cast<int16_t>(INT16_MAX))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(INT16_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT16_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT16_MAX));
 
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-
-    TestNext<TLVReader>(inSuite, reader);
-
-    // Writer did Put(AnonymousTag, static_cast<int64_t>(INT64_MAX))
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(INT64_MAX));
-
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<uint8_t>(UINT8_MAX))
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    // Writer did Put(AnonymousTag(), static_cast<int32_t>(INT32_MIN))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT32_MIN));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT32_MIN));
 
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint8_t>(UINT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint16_t>(UINT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint32_t>(UINT8_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(UINT8_MAX));
-
-    TestNext<TLVReader>(inSuite, reader);
-
-    // Writer did Put(AnonymousTag, static_cast<uint16_t>(UINT16_MAX))
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint16_t>(UINT16_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint32_t>(UINT16_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(UINT16_MAX));
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<uint32_t>(UINT32_MAX))
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    // Writer did Put(AnonymousTag(), static_cast<int32_t>(INT32_MAX))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(INT32_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT32_MAX));
 
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint32_t>(UINT32_MAX));
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(UINT32_MAX));
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
 
     TestNext<TLVReader>(inSuite, reader);
 
-    // Writer did Put(AnonymousTag, static_cast<uint64_t>(UINT64_MAX))
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    // Writer did Put(AnonymousTag(), static_cast<int64_t>(INT64_MIN))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT64_MIN));
 
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(UINT64_MAX));
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TestNext<TLVReader>(inSuite, reader);
+
+    // Writer did Put(AnonymousTag(), static_cast<int64_t>(INT64_MAX))
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(INT64_MAX));
+
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TestNext<TLVReader>(inSuite, reader);
+
+    // Writer did Put(AnonymousTag(), static_cast<uint8_t>(UINT8_MAX))
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint8_t>(UINT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint16_t>(UINT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint32_t>(UINT8_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(UINT8_MAX));
+
+    TestNext<TLVReader>(inSuite, reader);
+
+    // Writer did Put(AnonymousTag(), static_cast<uint16_t>(UINT16_MAX))
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint16_t>(UINT16_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint32_t>(UINT16_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(UINT16_MAX));
+
+    TestNext<TLVReader>(inSuite, reader);
+
+    // Writer did Put(AnonymousTag(), static_cast<uint32_t>(UINT32_MAX))
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint32_t>(UINT32_MAX));
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(UINT32_MAX));
+
+    TestNext<TLVReader>(inSuite, reader);
+
+    // Writer did Put(AnonymousTag(), static_cast<uint64_t>(UINT64_MAX))
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int8_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int16_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int32_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(0), CHIP_ERROR_WRONG_TLV_TYPE);
+
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint8_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint16_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint32_t>(0), CHIP_ERROR_INVALID_INTEGER_VALUE);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(UINT64_MAX));
 }
 
 void WriteEncoding1(nlTestSuite * inSuite, TLVWriter & writer)
@@ -581,22 +590,22 @@ void WriteEncoding1(nlTestSuite * inSuite, TLVWriter & writer)
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
         // TODO(#1306): expand coverage of inttype encoding tests.
-        err = writer3.Put(AnonymousTag, static_cast<int32_t>(42));
+        err = writer3.Put(AnonymousTag(), static_cast<int32_t>(42));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int32_t>(-17));
+        err = writer3.Put(AnonymousTag(), static_cast<int32_t>(-17));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int32_t>(-170000));
+        err = writer3.Put(AnonymousTag(), static_cast<int32_t>(-170000));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<uint64_t>(40000000000ULL));
+        err = writer3.Put(AnonymousTag(), static_cast<uint64_t>(40000000000ULL));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
         {
             TLVWriter writer4;
 
-            err = writer3.OpenContainer(AnonymousTag, kTLVType_Structure, writer4);
+            err = writer3.OpenContainer(AnonymousTag(), kTLVType_Structure, writer4);
             NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
             err = writer3.CloseContainer(writer4);
@@ -606,7 +615,7 @@ void WriteEncoding1(nlTestSuite * inSuite, TLVWriter & writer)
         {
             TLVWriter writer5;
 
-            err = writer3.OpenContainer(AnonymousTag, kTLVType_List, writer5);
+            err = writer3.OpenContainer(AnonymousTag(), kTLVType_List, writer5);
             NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
             err = writer5.PutNull(ProfileTag(TestProfile_1, 17));
@@ -615,7 +624,7 @@ void WriteEncoding1(nlTestSuite * inSuite, TLVWriter & writer)
             err = writer5.PutNull(ProfileTag(TestProfile_2, 900000));
             NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-            err = writer5.PutNull(AnonymousTag);
+            err = writer5.PutNull(AnonymousTag());
             NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
             {
@@ -706,40 +715,44 @@ void ReadEncoding1(nlTestSuite * inSuite, TLVReader & reader)
 
             TestNext<TLVReader>(inSuite, reader3);
 
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(42));
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint8_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint16_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(-17));
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(-17), CHIP_ERROR_WRONG_TLV_TYPE);
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(-170000));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(-170000));
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(40000000000ULL),
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(42));
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint8_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint16_t>(42),
                      CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(40000000000ULL));
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(42),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(42),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(-17));
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(-17),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(-170000));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(-170000));
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(40000000000ULL),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(40000000000ULL));
 
             TestNext<TLVReader>(inSuite, reader3);
 
             {
                 TLVReader reader4;
 
-                TestAndOpenContainer(inSuite, reader3, kTLVType_Structure, AnonymousTag, reader4);
+                TestAndOpenContainer(inSuite, reader3, kTLVType_Structure, AnonymousTag(), reader4);
 
                 TestEndAndCloseContainer(inSuite, reader3, reader4);
             }
@@ -749,7 +762,7 @@ void ReadEncoding1(nlTestSuite * inSuite, TLVReader & reader)
             {
                 TLVReader reader5;
 
-                TestAndOpenContainer(inSuite, reader3, kTLVType_List, AnonymousTag, reader5);
+                TestAndOpenContainer(inSuite, reader3, kTLVType_List, AnonymousTag(), reader5);
 
                 TestNext<TLVReader>(inSuite, reader5);
 
@@ -761,7 +774,7 @@ void ReadEncoding1(nlTestSuite * inSuite, TLVReader & reader)
 
                 TestNext<TLVReader>(inSuite, reader5);
 
-                TestNull(inSuite, reader5, AnonymousTag);
+                TestNull(inSuite, reader5, AnonymousTag());
 
                 TestNext<TLVReader>(inSuite, reader5);
 
@@ -1628,7 +1641,7 @@ static void TestIntMinMax(nlTestSuite * inSuite, void * inContext)
  *                           to the format specifiers in @a aFormat.
  *
  */
-void SimpleDumpWriter(const char * aFormat, ...)
+void ENFORCE_FORMAT(1, 2) SimpleDumpWriter(const char * aFormat, ...)
 {
     va_list args;
 
@@ -2564,9 +2577,9 @@ void CheckCHIPTLVPutStringF(nlTestSuite * inSuite, void * inContext)
     CHIP_ERROR err = CHIP_NO_ERROR;
 
     writer.Init(backingStore, bufsize);
-    snprintf(strBuffer, sizeof(strBuffer), "Sample string %zu", num);
+    snprintf(strBuffer, sizeof(strBuffer), "Sample string %u", static_cast<unsigned int>(num));
 
-    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %zu", num);
+    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %u", static_cast<unsigned int>(num));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer.Finalize();
@@ -2576,10 +2589,10 @@ void CheckCHIPTLVPutStringF(nlTestSuite * inSuite, void * inContext)
     err = reader.Next();
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = reader.GetString(valStr, 256);
+    err = reader.GetString(valStr, bufsize);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    NL_TEST_ASSERT(inSuite, strncmp(valStr, strBuffer, 256) == 0);
+    NL_TEST_ASSERT(inSuite, strncmp(valStr, strBuffer, bufsize) == 0);
 }
 
 void CheckCHIPTLVPutStringSpan(nlTestSuite * inSuite, void * inContext)
@@ -2624,10 +2637,10 @@ void CheckCHIPTLVPutStringSpan(nlTestSuite * inSuite, void * inContext)
         err = reader.Next();
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = reader.GetString(valStr, 256);
+        err = reader.GetString(valStr, bufsize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        NL_TEST_ASSERT(inSuite, strncmp(valStr, strBuffer, 256) == 0);
+        NL_TEST_ASSERT(inSuite, strncmp(valStr, strBuffer, bufsize) == 0);
     }
 }
 
@@ -2646,7 +2659,7 @@ void CheckCHIPTLVPutStringFCircular(nlTestSuite * inSuite, void * inContext)
     // Initial test: Verify that a straight printf works as expected into continuous buffer.
 
     writer.Init(buffer);
-    snprintf(strBuffer, sizeof(strBuffer), "Sample string %zu", num);
+    snprintf(strBuffer, sizeof(strBuffer), "Sample string %u", static_cast<unsigned int>(num));
 
     err = writer.PutBoolean(ProfileTag(TestProfile_1, 2), true);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
@@ -2654,7 +2667,7 @@ void CheckCHIPTLVPutStringFCircular(nlTestSuite * inSuite, void * inContext)
     err = writer.Finalize();
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %zu", num);
+    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %u", static_cast<unsigned int>(num));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer.Finalize();
@@ -2678,9 +2691,9 @@ void CheckCHIPTLVPutStringFCircular(nlTestSuite * inSuite, void * inContext)
     // This print will both stradle the boundary of the buffer and displace the previous two elements.
     num = 2;
 
-    snprintf(strBuffer, sizeof(strBuffer), "Sample string %zu", num);
+    snprintf(strBuffer, sizeof(strBuffer), "Sample string %u", static_cast<unsigned int>(num));
 
-    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %zu", num);
+    err = writer.PutStringF(ProfileTag(TestProfile_1, 1), "Sample string %u", static_cast<unsigned int>(num));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer.Finalize();
@@ -2738,16 +2751,16 @@ void CheckCHIPTLVSkipCircular(nlTestSuite * inSuite, void * inContext)
 
     writer.Init(buffer);
 
-    err = writer.PutString(AnonymousTag, testString);
+    err = writer.PutString(AnonymousTag(), testString);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.PutString(AnonymousTag, testString);
+    err = writer.PutString(AnonymousTag(), testString);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.PutString(AnonymousTag, testString); // This event straddles the boundary
+    err = writer.PutString(AnonymousTag(), testString); // This event straddles the boundary
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.PutString(AnonymousTag, testString); // This one does not.
+    err = writer.PutString(AnonymousTag(), testString); // This one does not.
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer.Finalize();
@@ -2909,7 +2922,7 @@ void TestCHIPTLVWriterCopyElement(nlTestSuite * inSuite)
     writer.Init(expectedBuf);
     writer.ImplicitProfileId = TestProfile_2;
 
-    err = writer.StartContainer(AnonymousTag, kTLVType_Structure, outerContainerType);
+    err = writer.StartContainer(AnonymousTag(), kTLVType_Structure, outerContainerType);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     for (int i = 0; i < kRepeatCount; i++)
@@ -2928,7 +2941,7 @@ void TestCHIPTLVWriterCopyElement(nlTestSuite * inSuite)
     writer.Init(testBuf);
     writer.ImplicitProfileId = TestProfile_2;
 
-    err = writer.StartContainer(AnonymousTag, kTLVType_Structure, outerContainerType);
+    err = writer.StartContainer(AnonymousTag(), kTLVType_Structure, outerContainerType);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     for (int i = 0; i < kRepeatCount; i++)
@@ -2982,38 +2995,38 @@ void PreserveSizeWrite(nlTestSuite * inSuite, TLVWriter & writer, bool preserveS
         err = writer2.OpenContainer(ContextTag(0), kTLVType_Array, writer3);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<uint8_t>(42), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<uint8_t>(42), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<uint16_t>(42), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<uint16_t>(42), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<uint32_t>(42), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<uint32_t>(42), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<uint64_t>(40000000000ULL), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<uint64_t>(40000000000ULL), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int8_t>(-17), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<int8_t>(-17), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int16_t>(-17), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<int16_t>(-17), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int32_t>(-170000), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<int32_t>(-170000), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int64_t>(-170000), preserveSize);
+        err = writer3.Put(AnonymousTag(), static_cast<int64_t>(-170000), preserveSize);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
         // the below cases are for full coverage of PUTs
-        err = writer3.Put(AnonymousTag, static_cast<uint64_t>(65535), false);
+        err = writer3.Put(AnonymousTag(), static_cast<uint64_t>(65535), false);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int64_t>(32767), false);
+        err = writer3.Put(AnonymousTag(), static_cast<int64_t>(32767), false);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer3.Put(AnonymousTag, static_cast<int64_t>(40000000000ULL), false);
+        err = writer3.Put(AnonymousTag(), static_cast<int64_t>(40000000000ULL), false);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
         err = writer2.CloseContainer(writer3);
@@ -3096,6 +3109,35 @@ void TestCHIPTLVWriterErrorHandling(nlTestSuite * inSuite)
     NL_TEST_ASSERT(inSuite, err == CHIP_ERROR_INVALID_ARGUMENT);
 }
 
+void TestCHIPTLVEmptyString(nlTestSuite * inSuite)
+{
+    uint8_t buf[2];
+    TLVWriter writer;
+    CHIP_ERROR err;
+    ByteSpan s;
+
+    writer.Init(buf);
+
+    err = writer.PutString(AnonymousTag(), nullptr, 0);
+    NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+
+    err = writer.Finalize();
+    NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+
+    TLVReader reader;
+
+    reader.Init(buf);
+
+    err = reader.Next();
+    NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+
+    err = reader.Get(s);
+    NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+
+    NL_TEST_ASSERT(inSuite, s.data() == nullptr);
+    NL_TEST_ASSERT(inSuite, s.size() == 0);
+}
+
 /**
  *  Test CHIP TLV Writer
  */
@@ -3108,6 +3150,8 @@ void CheckCHIPTLVWriter(nlTestSuite * inSuite, void * inContext)
     TestCHIPTLVWriterPreserveSize(inSuite);
 
     TestCHIPTLVWriterErrorHandling(inSuite);
+
+    TestCHIPTLVEmptyString(inSuite);
 }
 
 void SkipNonContainer(nlTestSuite * inSuite)
@@ -3213,37 +3257,39 @@ void TestCHIPTLVReaderDup(nlTestSuite * inSuite)
 
             TestNext<TLVReader>(inSuite, reader3);
 
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(42));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(42));
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint32_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<uint64_t>(42), CHIP_ERROR_WRONG_TLV_TYPE);
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int8_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int16_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(-17));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(-17));
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int32_t>(-170000));
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag, static_cast<int64_t>(-170000));
-
-            TestNext<TLVReader>(inSuite, reader3);
-
-            TEST_GET(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag, static_cast<int64_t>(40000000000ULL),
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(42));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(42));
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint32_t>(42),
                      CHIP_ERROR_WRONG_TLV_TYPE);
-            TEST_GET_NOERROR(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag, static_cast<uint64_t>(40000000000ULL));
+            TEST_GET(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<uint64_t>(42),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int8_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int16_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(-17));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(-17));
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int32_t>(-170000));
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_SignedInteger, AnonymousTag(), static_cast<int64_t>(-170000));
+
+            TestNext<TLVReader>(inSuite, reader3);
+
+            TEST_GET(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<int64_t>(40000000000ULL),
+                     CHIP_ERROR_WRONG_TLV_TYPE);
+            TEST_GET_NOERROR(inSuite, reader3, kTLVType_UnsignedInteger, AnonymousTag(), static_cast<uint64_t>(40000000000ULL));
 
             TestNext<TLVReader>(inSuite, reader3);
 
             {
                 TLVReader reader4;
 
-                TestAndOpenContainer(inSuite, reader3, kTLVType_Structure, AnonymousTag, reader4);
+                TestAndOpenContainer(inSuite, reader3, kTLVType_Structure, AnonymousTag(), reader4);
 
                 TestEndAndCloseContainer(inSuite, reader3, reader4);
             }
@@ -3253,7 +3299,7 @@ void TestCHIPTLVReaderDup(nlTestSuite * inSuite)
             {
                 TLVReader reader5;
 
-                TestAndOpenContainer(inSuite, reader3, kTLVType_List, AnonymousTag, reader5);
+                TestAndOpenContainer(inSuite, reader3, kTLVType_List, AnonymousTag(), reader5);
 
                 TestNext<TLVReader>(inSuite, reader5);
 
@@ -3265,7 +3311,7 @@ void TestCHIPTLVReaderDup(nlTestSuite * inSuite)
 
                 TestNext<TLVReader>(inSuite, reader5);
 
-                TestNull(inSuite, reader5, AnonymousTag);
+                TestNull(inSuite, reader5, AnonymousTag());
 
                 TestNext<TLVReader>(inSuite, reader5);
 
@@ -3393,7 +3439,7 @@ void TestCHIPTLVReaderTruncatedReads(nlTestSuite * inSuite)
     writer.Init(buf);
     writer.ImplicitProfileId = TestProfile_2;
 
-    err = writer.Put(AnonymousTag, double{ 12.5 });
+    err = writer.Put(AnonymousTag(), double{ 12.5 });
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     // Test reading values from the buffer
@@ -3401,7 +3447,7 @@ void TestCHIPTLVReaderTruncatedReads(nlTestSuite * inSuite)
 
     TestNext<TLVReader>(inSuite, reader);
 
-    TEST_GET_NOERROR(inSuite, reader, kTLVType_FloatingPointNumber, AnonymousTag, 12.5);
+    TEST_GET_NOERROR(inSuite, reader, kTLVType_FloatingPointNumber, AnonymousTag(), 12.5);
 
     err = reader.Get(outF);
     NL_TEST_ASSERT(inSuite, err == CHIP_ERROR_WRONG_TLV_TYPE);
@@ -3559,70 +3605,70 @@ static void TestItems(nlTestSuite * inSuite, void * inContext)
     writer.Init(sBuffer);
 
     TLVWriter writer2;
-    err = writer.OpenContainer(AnonymousTag, kTLVType_Array, writer2);
+    err = writer.OpenContainer(AnonymousTag(), kTLVType_Array, writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     {
-        err = writer2.PutBoolean(AnonymousTag, true);
+        err = writer2.PutBoolean(AnonymousTag(), true);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int8_t>(-1));
+        err = writer2.Put(AnonymousTag(), static_cast<int8_t>(-1));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int16_t>(-2));
+        err = writer2.Put(AnonymousTag(), static_cast<int16_t>(-2));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int32_t>(-3));
+        err = writer2.Put(AnonymousTag(), static_cast<int32_t>(-3));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int64_t>(-4));
+        err = writer2.Put(AnonymousTag(), static_cast<int64_t>(-4));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<float>(-5.5));
+        err = writer2.Put(AnonymousTag(), static_cast<float>(-5.5));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<double>(-3.14159265358979323846));
+        err = writer2.Put(AnonymousTag(), static_cast<double>(-3.14159265358979323846));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
     }
 
     err = writer.CloseContainer(writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.OpenContainer(AnonymousTag, kTLVType_Array, writer2);
+    err = writer.OpenContainer(AnonymousTag(), kTLVType_Array, writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     {
-        err = writer2.PutBoolean(AnonymousTag, false);
+        err = writer2.PutBoolean(AnonymousTag(), false);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int8_t>(1));
+        err = writer2.Put(AnonymousTag(), static_cast<int8_t>(1));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int16_t>(2));
+        err = writer2.Put(AnonymousTag(), static_cast<int16_t>(2));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int32_t>(3));
+        err = writer2.Put(AnonymousTag(), static_cast<int32_t>(3));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<int64_t>(4));
+        err = writer2.Put(AnonymousTag(), static_cast<int64_t>(4));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<uint8_t>(5));
+        err = writer2.Put(AnonymousTag(), static_cast<uint8_t>(5));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<uint16_t>(6));
+        err = writer2.Put(AnonymousTag(), static_cast<uint16_t>(6));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<uint32_t>(7));
+        err = writer2.Put(AnonymousTag(), static_cast<uint32_t>(7));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<uint64_t>(8));
+        err = writer2.Put(AnonymousTag(), static_cast<uint64_t>(8));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<float>(9.9));
+        err = writer2.Put(AnonymousTag(), static_cast<float>(9.9));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-        err = writer2.Put(AnonymousTag, static_cast<double>(3.14159265358979323846));
+        err = writer2.Put(AnonymousTag(), static_cast<double>(3.14159265358979323846));
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
     }
 
@@ -3645,7 +3691,7 @@ static void TestContainers(nlTestSuite * inSuite, void * inContext)
     writer.Init(sBuffer);
 
     TLVWriter writer2;
-    err = writer.OpenContainer(AnonymousTag, kTLVType_Array, writer2);
+    err = writer.OpenContainer(AnonymousTag(), kTLVType_Array, writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     TLVType type = writer2.GetContainerType();
@@ -3654,7 +3700,7 @@ static void TestContainers(nlTestSuite * inSuite, void * inContext)
     err = writer.CloseContainer(writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer.OpenContainer(AnonymousTag, kTLVType_Structure, writer2);
+    err = writer.OpenContainer(AnonymousTag(), kTLVType_Structure, writer2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     type = writer2.GetContainerType();
@@ -3738,10 +3784,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
 
     writer1.Init(buf);
 
-    err = writer1.OpenContainer(AnonymousTag, kTLVType_Array, innerWriter1);
+    err = writer1.OpenContainer(AnonymousTag(), kTLVType_Array, innerWriter1);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = innerWriter1.OpenContainer(AnonymousTag, kTLVType_Structure, innerWriter2);
+    err = innerWriter1.OpenContainer(AnonymousTag(), kTLVType_Structure, innerWriter2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = innerWriter2.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3755,10 +3801,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
 
     writer2.Init(buf, sizeof(buf));
 
-    err = writer2.OpenContainer(AnonymousTag, kTLVType_Array, innerWriter1);
+    err = writer2.OpenContainer(AnonymousTag(), kTLVType_Array, innerWriter1);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = innerWriter1.OpenContainer(AnonymousTag, kTLVType_Structure, innerWriter2);
+    err = innerWriter1.OpenContainer(AnonymousTag(), kTLVType_Structure, innerWriter2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = innerWriter2.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3774,10 +3820,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
 
     writer1.Init(buf);
 
-    err = writer1.StartContainer(AnonymousTag, kTLVType_Array, container1);
+    err = writer1.StartContainer(AnonymousTag(), kTLVType_Array, container1);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer1.StartContainer(AnonymousTag, kTLVType_Structure, container2);
+    err = writer1.StartContainer(AnonymousTag(), kTLVType_Structure, container2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer1.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3791,10 +3837,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
 
     writer2.Init(buf, sizeof(buf));
 
-    err = writer2.StartContainer(AnonymousTag, kTLVType_Array, container1);
+    err = writer2.StartContainer(AnonymousTag(), kTLVType_Array, container1);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
-    err = writer2.StartContainer(AnonymousTag, kTLVType_Structure, container2);
+    err = writer2.StartContainer(AnonymousTag(), kTLVType_Structure, container2);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     err = writer2.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3845,7 +3891,7 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
     err = writer1.OpenContainer(ProfileTag(TestProfile_1, 2), kTLVType_Structure, innerWriter1);
     NL_TEST_ASSERT(inSuite, err == CHIP_ERROR_BUFFER_TOO_SMALL);
 
-    err = writer1.StartContainer(AnonymousTag, kTLVType_Array, container1);
+    err = writer1.StartContainer(AnonymousTag(), kTLVType_Array, container1);
     NL_TEST_ASSERT(inSuite, err == CHIP_ERROR_BUFFER_TOO_SMALL);
 
     // Test again all cases from 0 to the length of buf1
@@ -3856,10 +3902,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
 
         writer1.Init(buf, maxLen);
 
-        err = writer1.OpenContainer(AnonymousTag, kTLVType_Array, innerWriter1);
+        err = writer1.OpenContainer(AnonymousTag(), kTLVType_Array, innerWriter1);
 
         if (err == CHIP_NO_ERROR)
-            err = innerWriter1.OpenContainer(AnonymousTag, kTLVType_Structure, innerWriter2);
+            err = innerWriter1.OpenContainer(AnonymousTag(), kTLVType_Structure, innerWriter2);
 
         if (err == CHIP_NO_ERROR)
             err = innerWriter2.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3877,10 +3923,10 @@ static void CheckCloseContainerReserve(nlTestSuite * inSuite, void * inContext)
         writer1.Init(buf, maxLen);
 
         if (err == CHIP_NO_ERROR)
-            err = writer1.StartContainer(AnonymousTag, kTLVType_Array, container1);
+            err = writer1.StartContainer(AnonymousTag(), kTLVType_Array, container1);
 
         if (err == CHIP_NO_ERROR)
-            err = writer1.StartContainer(AnonymousTag, kTLVType_Structure, container2);
+            err = writer1.StartContainer(AnonymousTag(), kTLVType_Structure, container2);
 
         if (err == CHIP_NO_ERROR)
             err = writer1.PutBoolean(ProfileTag(TestProfile_1, 2), true);
@@ -3936,7 +3982,7 @@ static CHIP_ERROR ReadFuzzedEncoding1(nlTestSuite * inSuite, TLVReader & reader)
             TLVType outerContainer2Type;
 
             ReturnErrorOnFailure(reader.EnterContainer(outerContainer2Type));
-            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag()));
 
             FUZZ_CHECK_VAL(int8_t, 42);
             FUZZ_CHECK_VAL(int16_t, 42);
@@ -3947,24 +3993,24 @@ static CHIP_ERROR ReadFuzzedEncoding1(nlTestSuite * inSuite, TLVReader & reader)
             FUZZ_CHECK_VAL(uint32_t, 42);
             FUZZ_CHECK_VAL(uint64_t, 42);
 
-            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag()));
 
             FUZZ_CHECK_VAL(int8_t, -17);
             FUZZ_CHECK_VAL(int16_t, -17);
             FUZZ_CHECK_VAL(int32_t, -17);
             FUZZ_CHECK_VAL(int64_t, -17);
 
-            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_SignedInteger, AnonymousTag()));
 
             FUZZ_CHECK_VAL(int32_t, -170000);
             FUZZ_CHECK_VAL(int64_t, -170000);
 
-            ReturnErrorOnFailure(reader.Next(kTLVType_UnsignedInteger, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_UnsignedInteger, AnonymousTag()));
 
             FUZZ_CHECK_VAL(int64_t, 40000000000ULL);
             FUZZ_CHECK_VAL(uint64_t, 40000000000ULL);
 
-            ReturnErrorOnFailure(reader.Next(kTLVType_Structure, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_Structure, AnonymousTag()));
 
             {
                 TLVType outerContainer3Type;
@@ -3973,7 +4019,7 @@ static CHIP_ERROR ReadFuzzedEncoding1(nlTestSuite * inSuite, TLVReader & reader)
                 ReturnErrorOnFailure(reader.ExitContainer(outerContainer3Type));
             }
 
-            ReturnErrorOnFailure(reader.Next(kTLVType_List, AnonymousTag));
+            ReturnErrorOnFailure(reader.Next(kTLVType_List, AnonymousTag()));
 
             {
                 TLVType outerContainer3Type;
@@ -3981,7 +4027,7 @@ static CHIP_ERROR ReadFuzzedEncoding1(nlTestSuite * inSuite, TLVReader & reader)
                 ReturnErrorOnFailure(reader.EnterContainer(outerContainer3Type));
                 ReturnErrorOnFailure(reader.Next(kTLVType_Null, ProfileTag(TestProfile_1, 17)));
                 ReturnErrorOnFailure(reader.Next(kTLVType_Null, ProfileTag(TestProfile_2, 900000)));
-                ReturnErrorOnFailure(reader.Next(kTLVType_Null, AnonymousTag));
+                ReturnErrorOnFailure(reader.Next(kTLVType_Null, AnonymousTag()));
                 ReturnErrorOnFailure(reader.Next(kTLVType_Structure, ProfileTag(TestProfile_2, 4000000000ULL)));
 
                 {
@@ -4305,16 +4351,16 @@ static void CheckCHIPTLVScopedBuffer(nlTestSuite * inSuite, void * inContext)
     {
         ScopedBufferTLVWriter writer(std::move(buf), 64);
 
-        NL_TEST_ASSERT(inSuite, buf.Get() == nullptr);
+        NL_TEST_ASSERT(inSuite, buf.Get() == nullptr); // // NOLINT(bugprone-use-after-move)
 
-        err = writer.Put(TLV::AnonymousTag, (uint8_t) 33);
+        err = writer.Put(TLV::AnonymousTag(), (uint8_t) 33);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
         err = writer.Finalize(buf);
         NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
         NL_TEST_ASSERT(inSuite, buf.Get() != nullptr);
 
-        err = writer.Put(TLV::AnonymousTag, (uint8_t) 33);
+        err = writer.Put(TLV::AnonymousTag(), (uint8_t) 33);
         NL_TEST_ASSERT(inSuite, err != CHIP_NO_ERROR);
     }
 
@@ -4410,14 +4456,8 @@ int TestCHIPTLV(void)
         TestCHIPTLV_Teardown
     };
     // clang-format on
-    TestTLVContext context;
 
-    context.mSuite = &theSuite;
-
-    // Run test suit against one context
-    nlTestRunner(&theSuite, &context);
-
-    return (nlTestRunnerStats(&theSuite));
+    return chip::ExecuteTestsWithContext<TestTLVContext>(&theSuite, &theSuite);
 }
 
 CHIP_REGISTER_TEST_SUITE(TestCHIPTLV)

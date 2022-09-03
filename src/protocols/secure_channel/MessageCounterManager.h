@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <messaging/ExchangeDelegate.h>
+#include <messaging/ExchangeMgr.h>
 #include <protocols/Protocols.h>
 #include <system/SystemPacketBuffer.h>
 #include <transport/MessageCounterManagerInterface.h>
@@ -29,9 +31,9 @@
 namespace chip {
 namespace secure_channel {
 
-class ExchangeManager;
-
-class MessageCounterManager : public Messaging::ExchangeDelegate, public Transport::MessageCounterManagerInterface
+class MessageCounterManager : public Messaging::UnsolicitedMessageHandler,
+                              public Messaging::ExchangeDelegate,
+                              public Transport::MessageCounterManagerInterface
 {
 public:
     static constexpr uint16_t kChallengeSize             = Transport::PeerMessageCounter::kChallengeSize;
@@ -46,8 +48,8 @@ public:
     void Shutdown();
 
     // Implement MessageCounterManagerInterface
-    CHIP_ERROR StartSync(SessionHandle session, Transport::SecureSession * state) override;
-    CHIP_ERROR QueueReceivedMessageAndStartSync(const PacketHeader & packetHeader, SessionHandle session,
+    CHIP_ERROR StartSync(const SessionHandle & session, Transport::SecureSession * state) override;
+    CHIP_ERROR QueueReceivedMessageAndStartSync(const PacketHeader & packetHeader, const SessionHandle & session,
                                                 Transport::SecureSession * state, const Transport::PeerAddress & peerAddress,
                                                 System::PacketBufferHandle && msgBuf) override;
 
@@ -63,7 +65,7 @@ public:
      * @retval  #CHIP_NO_ERROR                On success.
      *
      */
-    CHIP_ERROR SendMsgCounterSyncReq(SessionHandle session, Transport::SecureSession * state);
+    CHIP_ERROR SendMsgCounterSyncReq(const SessionHandle & session, Transport::SecureSession * state);
 
     /**
      *  Add a CHIP message into the cache table to queue the incoming messages that trigger message counter synchronization
@@ -104,6 +106,8 @@ private:
     CHIP_ERROR SendMsgCounterSyncResp(Messaging::ExchangeContext * exchangeContext, FixedByteSpan<kChallengeSize> challenge);
     CHIP_ERROR HandleMsgCounterSyncReq(Messaging::ExchangeContext * exchangeContext, System::PacketBufferHandle && msgBuf);
     CHIP_ERROR HandleMsgCounterSyncResp(Messaging::ExchangeContext * exchangeContext, System::PacketBufferHandle && msgBuf);
+
+    CHIP_ERROR OnUnsolicitedMessageReceived(const PayloadHeader & payloadHeader, ExchangeDelegate *& newDelegate) override;
     CHIP_ERROR OnMessageReceived(Messaging::ExchangeContext * exchangeContext, const PayloadHeader & payloadHeader,
                                  System::PacketBufferHandle && payload) override;
 

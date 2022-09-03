@@ -18,13 +18,21 @@
 
 #pragma once
 
-#include <app-common/zap-generated/af-structs.h>
+#include <app/clusters/keypad-input-server/keypad-input-server.h>
 
-#include <lib/core/CHIPError.h>
-#include <list>
+using chip::app::CommandResponseHelper;
+using KeypadInputDelegate = chip::app::Clusters::KeypadInput::Delegate;
+using SendKeyResponseType = chip::app::Clusters::KeypadInput::Commands::SendKeyResponse::Type;
+using CecKeyCodeType      = chip::app::Clusters::KeypadInput::CecKeyCode;
 
-class KeypadInputManager
+class KeypadInputManager : public KeypadInputDelegate
 {
 public:
-    CHIP_ERROR Init();
+    void HandleSendKey(CommandResponseHelper<SendKeyResponseType> & helper, const CecKeyCodeType & keyCode) override;
+
+    uint32_t GetFeatureMap(chip::EndpointId endpoint) override;
+
+private:
+    // TODO: set this based upon meta data from app
+    uint32_t mDynamicEndpointFeatureMap = 7;
 };

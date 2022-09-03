@@ -33,6 +33,12 @@ IMAGE=${DOCKER_BUILD_IMAGE:-$(basename "$(pwd)")}
 # version
 VERSION=${DOCKER_BUILD_VERSION:-$(sed 's/ .*//' version)}
 
+if [[ $OSTYPE == 'darwin'* ]]; then
+    DOCKER_VOLUME_PATH=~/Library/Containers/com.docker.docker/Data/vms/0/
+else
+    DOCKER_VOLUME_PATH=/var/lib/docker/
+fi
+
 [[ ${*/--help//} != "${*}" ]] && {
     set +x
     echo "Usage: $me <OPTIONS>
@@ -59,6 +65,8 @@ set -ex
 
 [[ -n $VERSION ]] || die "version cannot be empty"
 
+mb_space_before=$(df -m "$DOCKER_VOLUME_PATH" | awk 'FNR==2{print $3}')
+
 # go find and build any CHIP images this image is "FROM"
 awk -F/ '/^FROM connectedhomeip/ {print $2}' Dockerfile | while read -r dep; do
     dep=${dep%:*}
@@ -71,6 +79,7 @@ if [[ ${*/--no-cache//} != "${*}" ]]; then
 fi
 
 docker build "${BUILD_ARGS[@]}" --build-arg VERSION="$VERSION" -t "$ORG/$IMAGE:$VERSION" .
+docker image prune --force
 
 [[ ${*/--latest//} != "${*}" ]] && {
     docker tag "$ORG"/"$IMAGE":"$VERSION" "$ORG"/"$IMAGE":latest
@@ -87,5 +96,11 @@ docker build "${BUILD_ARGS[@]}" --build-arg VERSION="$VERSION" -t "$ORG/$IMAGE:$
         docker push "$ORG"/"$IMAGE":latest
     }
 }
+
+docker images --filter=reference="$ORG/*"
+df -h "$DOCKER_VOLUME_PATH"
+mb_space_after=$(df -m "$DOCKER_VOLUME_PATH" | awk 'FNR==2{print $3}')
+
+printf "%'.f MB total used\n" "$((mb_space_before - mb_space_after))"
 
 exit 0

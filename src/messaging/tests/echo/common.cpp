@@ -30,9 +30,11 @@
 #include <platform/CHIPDeviceLayer.h>
 #include <protocols/secure_channel/MessageCounterManager.h>
 
+chip::FabricTable gFabricTable;
 chip::SessionManager gSessionManager;
 chip::Messaging::ExchangeManager gExchangeManager;
 chip::secure_channel::MessageCounterManager gMessageCounterManager;
+chip::TestPersistentStorageDelegate gStorage;
 
 void InitializeChip(void)
 {
@@ -49,7 +51,7 @@ void InitializeChip(void)
     SuccessOrExit(err);
 
     // Initialize TCP.
-    err = chip::DeviceLayer::InetLayer().InitTCP(chip::DeviceLayer::TCPEndPointManager());
+    err = chip::DeviceLayer::TCPEndPointManager()->Init(chip::DeviceLayer::SystemLayer());
     SuccessOrExit(err);
 
 exit:
@@ -65,5 +67,6 @@ void ShutdownChip(void)
     gMessageCounterManager.Shutdown();
     gExchangeManager.Shutdown();
     gSessionManager.Shutdown();
+    (void) chip::DeviceLayer::TCPEndPointManager()->Shutdown();
     chip::DeviceLayer::PlatformMgr().Shutdown();
 }

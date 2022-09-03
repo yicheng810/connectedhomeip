@@ -27,16 +27,22 @@
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
 
+#include <platform/internal/GenericConnectivityManagerImpl_UDP.ipp>
+
+#if INET_CONFIG_ENABLE_TCP_ENDPOINT
+#include <platform/internal/GenericConnectivityManagerImpl_TCP.ipp>
+#endif
+
 #if CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
-#include <platform/internal/GenericConnectivityManagerImpl_BLE.cpp>
+#include <platform/internal/GenericConnectivityManagerImpl_BLE.ipp>
 #endif
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-#include <platform/internal/GenericConnectivityManagerImpl_Thread.cpp>
+#include <platform/internal/GenericConnectivityManagerImpl_Thread.ipp>
 #endif
 
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
-#include <platform/internal/GenericConnectivityManagerImpl_WiFi.cpp>
+#include <platform/internal/GenericConnectivityManagerImpl_WiFi.ipp>
 #endif
 
 using namespace ::chip;
@@ -52,6 +58,7 @@ CHIP_ERROR ConnectivityManagerImpl::_Init(void)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
+#if CHIP_DEVICE_CONFIG_ENABLE_WIFI
     mWiFiStationMode              = kWiFiStationMode_Disabled;
     mWiFiAPMode                   = kWiFiAPMode_Disabled;
     mWiFiAPState                  = kWiFiAPState_NotActive;
@@ -59,7 +66,6 @@ CHIP_ERROR ConnectivityManagerImpl::_Init(void)
     mWiFiStationReconnectInterval = System::Clock::Milliseconds32(CHIP_DEVICE_CONFIG_WIFI_STATION_RECONNECT_INTERVAL);
     mWiFiAPIdleTimeout            = System::Clock::Milliseconds32(CHIP_DEVICE_CONFIG_WIFI_AP_IDLE_TIMEOUT);
 
-#if CHIP_DEVICE_CONFIG_ENABLE_WIFI
     WiFiMgr().Init();
 #endif
 
@@ -125,41 +131,41 @@ CHIP_ERROR ConnectivityManagerImpl::_SetWiFiStationReconnectInterval(System::Clo
 
 bool ConnectivityManagerImpl::_IsWiFiStationEnabled(void)
 {
-    bool isWifiStationEnabled = false;
+    bool isWiFiStationEnabled = false;
 
-    WiFiMgr().IsActivated(&isWifiStationEnabled);
+    WiFiMgr().IsActivated(&isWiFiStationEnabled);
 
-    return isWifiStationEnabled;
+    return isWiFiStationEnabled;
 }
 
 bool ConnectivityManagerImpl::_IsWiFiStationConnected(void)
 {
     CHIP_ERROR err                                  = CHIP_NO_ERROR;
     wifi_manager_connection_state_e connectionState = WIFI_MANAGER_CONNECTION_STATE_DISCONNECTED;
-    bool isWifiStationConnected                     = false;
+    bool isWiFiStationConnected                     = false;
 
     err = WiFiMgr().GetConnectionState(&connectionState);
-    VerifyOrReturnError(err == CHIP_NO_ERROR, isWifiStationConnected);
+    VerifyOrReturnError(err == CHIP_NO_ERROR, isWiFiStationConnected);
 
     if (connectionState == WIFI_MANAGER_CONNECTION_STATE_CONNECTED)
-        isWifiStationConnected = true;
+        isWiFiStationConnected = true;
 
-    return isWifiStationConnected;
+    return isWiFiStationConnected;
 }
 
 bool ConnectivityManagerImpl::_IsWiFiStationProvisioned(void)
 {
     CHIP_ERROR err                                  = CHIP_NO_ERROR;
     wifi_manager_connection_state_e connectionState = WIFI_MANAGER_CONNECTION_STATE_DISCONNECTED;
-    bool isWifiStationProvisioned                   = false;
+    bool isWiFiStationProvisioned                   = false;
 
     err = WiFiMgr().GetConnectionState(&connectionState);
-    VerifyOrReturnError(err == CHIP_NO_ERROR, isWifiStationProvisioned);
+    VerifyOrReturnError(err == CHIP_NO_ERROR, isWiFiStationProvisioned);
 
     if (connectionState >= WIFI_MANAGER_CONNECTION_STATE_ASSOCIATION)
-        isWifiStationProvisioned = true;
+        isWiFiStationProvisioned = true;
 
-    return isWifiStationProvisioned;
+    return isWiFiStationProvisioned;
 }
 
 void ConnectivityManagerImpl::_ClearWiFiStationProvision(void)
@@ -197,12 +203,12 @@ void ConnectivityManagerImpl::_SetWiFiAPIdleTimeout(System::Clock::Timeout val) 
 
 void ConnectivityManagerImpl::StartWiFiManagement(void)
 {
-    SystemLayer().ScheduleWork(ActivateWiFiManager, NULL);
+    SystemLayer().ScheduleWork(ActivateWiFiManager, nullptr);
 }
 
 void ConnectivityManagerImpl::StopWiFiManagement(void)
 {
-    SystemLayer().ScheduleWork(DeactivateWiFiManager, NULL);
+    SystemLayer().ScheduleWork(DeactivateWiFiManager, nullptr);
 }
 
 void ConnectivityManagerImpl::ActivateWiFiManager(::chip::System::Layer * aLayer, void * aAppState)
@@ -214,12 +220,12 @@ void ConnectivityManagerImpl::DeactivateWiFiManager(::chip::System::Layer * aLay
 {
     WiFiMgr().Deactivate();
 }
-#endif // CHIP_DEVICE_CONFIG_ENABLE_WIFI
 
 CHIP_ERROR ConnectivityManagerImpl::ProvisionWiFiNetwork(const char * ssid, const char * key)
 {
     return WiFiMgr().Connect(ssid, key);
 }
+#endif // CHIP_DEVICE_CONFIG_ENABLE_WIFI
 
 } // namespace DeviceLayer
 } // namespace chip

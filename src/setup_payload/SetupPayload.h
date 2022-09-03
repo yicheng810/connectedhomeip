@@ -29,7 +29,9 @@
 #include <vector>
 
 #include <lib/core/CHIPError.h>
+#include <lib/core/Optional.h>
 #include <lib/support/BitFlags.h>
+#include <lib/support/SetupDiscriminator.h>
 
 namespace chip {
 
@@ -39,13 +41,13 @@ const int kVendorIDFieldLengthInBits             = 16;
 const int kProductIDFieldLengthInBits            = 16;
 const int kCommissioningFlowFieldLengthInBits    = 2;
 const int kRendezvousInfoFieldLengthInBits       = 8;
-const int kPayloadDiscriminatorFieldLengthInBits = 12;
+const int kPayloadDiscriminatorFieldLengthInBits = SetupDiscriminator::kLongBits;
 const int kSetupPINCodeFieldLengthInBits         = 27;
 const int kPaddingFieldLengthInBits              = 4;
 const int kRawVendorTagLengthInBits              = 7;
 
 // See section 5.1.3. Manual Pairing Code in the Matter specification
-const int kManualSetupDiscriminatorFieldLengthInBits  = 4;
+const int kManualSetupDiscriminatorFieldLengthInBits  = SetupDiscriminator::kShortBits;
 const int kManualSetupChunk1DiscriminatorMsbitsPos    = 0;
 const int kManualSetupChunk1DiscriminatorMsbitsLength = 2;
 const int kManualSetupChunk1VidPidPresentBitPos =
@@ -65,10 +67,15 @@ const int kManualSetupCodeChunk3CharLength = 4;
 const int kManualSetupVendorIdCharLength   = 5;
 const int kManualSetupProductIdCharLength  = 5;
 
-const uint8_t kSerialNumberTag = 128;
+// Spec 5.1.4.2 CHIP-Common Reserved Tags
+constexpr uint8_t kSerialNumberTag         = 0x00;
+constexpr uint8_t kPBKDFIterationsTag      = 0x01;
+constexpr uint8_t kBPKFSaltTag             = 0x02;
+constexpr uint8_t kNumberOFDevicesTag      = 0x03;
+constexpr uint8_t kCommissioningTimeoutTag = 0x04;
 
-// The largest value of the 12-bit Payload discriminator
-const uint16_t kMaxDiscriminatorValue = 0xFFF;
+constexpr uint32_t kSetupPINCodeMaximumValue   = 99999998;
+constexpr uint32_t kSetupPINCodeUndefinedValue = 0;
 
 // clang-format off
 const int kTotalPayloadDataSizeInBits =
@@ -109,17 +116,22 @@ enum class CommissioningFlow : uint8_t
  */
 struct PayloadContents
 {
-    uint8_t version                                  = 0;
-    uint16_t vendorID                                = 0;
-    uint16_t productID                               = 0;
-    CommissioningFlow commissioningFlow              = CommissioningFlow::kStandard;
-    RendezvousInformationFlags rendezvousInformation = RendezvousInformationFlag::kNone;
-    uint16_t discriminator                           = 0;
-    uint32_t setUpPINCode                            = 0;
+    uint8_t version                     = 0;
+    uint16_t vendorID                   = 0;
+    uint16_t productID                  = 0;
+    CommissioningFlow commissioningFlow = CommissioningFlow::kStandard;
+    Optional<RendezvousInformationFlags> rendezvousInformation;
+    SetupDiscriminator discriminator;
+    uint32_t setUpPINCode = 0;
 
     bool isValidQRCodePayload() const;
     bool isValidManualCode() const;
     bool operator==(PayloadContents & input) const;
+
+    static bool IsValidSetupPIN(uint32_t setupPIN);
+
+private:
+    bool CheckPayloadCommonConstraints() const;
 };
 
 enum optionalQRCodeInfoType
@@ -162,9 +174,6 @@ struct OptionalQRCodeInfoExtension : OptionalQRCodeInfo
     uint64_t uint64;
 };
 
-bool IsCHIPTag(uint8_t tag);
-bool IsVendorTag(uint8_t tag);
-
 class SetupPayload : public PayloadContents
 {
 
@@ -173,7 +182,7 @@ class SetupPayload : public PayloadContents
 
 public:
     /** @brief A function to add an optional vendor data
-     * @param tag 7 bit [0-127] tag number
+     * @param tag tag number in the [0x80-0xFF] range
      * @param data String representation of data to add
      * @return Returns a CHIP_ERROR on error, CHIP_NO_ERROR otherwise
      **/
@@ -225,6 +234,18 @@ public:
 private:
     std::map<uint8_t, OptionalQRCodeInfo> optionalVendorData;
     std::map<uint8_t, OptionalQRCodeInfoExtension> optionalExtensionData;
+
+    /** @brief Checks if the tag is CHIP Common type
+     * @param tag Tag to be checked
+     * @return Returns True if the tag is of Common type
+     **/
+    static bool IsCommonTag(uint8_t tag);
+
+    /** @brief Checks if the tag is vendor-specific
+     * @param tag Tag to be checked
+     * @return Returns True if the tag is Vendor-specific
+     **/
+    static bool IsVendorTag(uint8_t tag);
 
     /** @brief A function to add an optional QR Code info vendor object
      * @param info Optional QR code info object to add

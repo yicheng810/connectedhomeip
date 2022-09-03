@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import os
-import platform
-import glob
 import shlex
-import pathlib
-
 from enum import Enum, auto
+
 from .builder import Builder
 
 
@@ -27,6 +23,7 @@ class MbedApp(Enum):
     LOCK = auto()
     LIGHT = auto()
     ALL_CLUSTERS = auto()
+    ALL_CLUSTERS_MINIMAL = auto()
     PIGWEED = auto()
     SHELL = auto()
 
@@ -38,6 +35,8 @@ class MbedApp(Enum):
             return 'lighting-app'
         elif self == MbedApp.ALL_CLUSTERS:
             return 'all-clusters-app'
+        elif self == MbedApp.ALL_CLUSTERS_MINIMAL:
+            return 'all-clusters-minimal-app'
         elif self == MbedApp.PIGWEED:
             return 'pigweed-app'
         elif self == MbedApp.SHELL:
@@ -53,6 +52,8 @@ class MbedApp(Enum):
             return 'chip-mbed-lighting-app-example'
         elif self == MbedApp.ALL_CLUSTERS:
             return 'chip-mbed-all-clusters-app-example'
+        elif self == MbedApp.ALL_CLUSTERS_MINIMAL:
+            return 'chip-mbed-all-clusters-minimal-app-example'
         elif self == MbedApp.PIGWEED:
             return 'chip-mbed-pigweed-app-example'
         elif self == MbedApp.SHELL:

@@ -3,6 +3,7 @@
 #include <platform/logging/LogV.h>
 
 #include <lib/core/CHIPConfig.h>
+#include <lib/support/EnforceFormat.h>
 #include <lib/support/logging/Constants.h>
 
 #include <kernel.h>
@@ -18,7 +19,7 @@
 #define LOG_MESSAGE(msg) (msg)
 #endif
 
-LOG_MODULE_REGISTER(chip, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(chip, CONFIG_MATTER_LOG_LEVEL);
 
 namespace chip {
 namespace DeviceLayer {
@@ -40,7 +41,7 @@ namespace Platform {
  * CHIP log output function.
  */
 
-void LogV(const char * module, uint8_t category, const char * msg, va_list v)
+void ENFORCE_FORMAT(3, 0) LogV(const char * module, uint8_t category, const char * msg, va_list v)
 {
     char formattedMsg[CHIP_CONFIG_LOG_MESSAGE_MAX_SIZE];
     snprintfcb(formattedMsg, sizeof(formattedMsg), "[%s]", module);
@@ -48,7 +49,7 @@ void LogV(const char * module, uint8_t category, const char * msg, va_list v)
     const size_t prefixLen = strlen(formattedMsg);
     vsnprintfcb(formattedMsg + prefixLen, sizeof(formattedMsg) - prefixLen, msg, v);
 
-    const char * allocatedMsg = log_strdup(formattedMsg);
+    const char * allocatedMsg = formattedMsg;
 
     // Invoke the Zephyr logging library to log the message.
     //

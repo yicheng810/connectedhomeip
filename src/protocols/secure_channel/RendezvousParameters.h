@@ -54,6 +54,8 @@ public:
         return *this;
     }
 
+    // Discriminators in RendezvousParameters are always long (12-bit)
+    // discriminators.
     bool HasDiscriminator() const { return mDiscriminator <= kMaxRendezvousDiscriminatorValue; }
     uint16_t GetDiscriminator() const { return mDiscriminator; }
     RendezvousParameters & SetDiscriminator(uint16_t discriminator)
@@ -63,8 +65,8 @@ public:
     }
 
     bool HasPASEVerifier() const { return mHasPASEVerifier; }
-    const PASEVerifier & GetPASEVerifier() const { return mPASEVerifier; }
-    RendezvousParameters & SetPASEVerifier(PASEVerifier & verifier)
+    const Spake2pVerifier & GetPASEVerifier() const { return mPASEVerifier; }
+    RendezvousParameters & SetPASEVerifier(Spake2pVerifier & verifier)
     {
         memmove(&mPASEVerifier, &verifier, sizeof(verifier));
         mHasPASEVerifier = true;
@@ -80,7 +82,7 @@ public:
         return *this;
     }
 
-    bool HasConnectionObject() const { return mConnectionObject != 0; }
+    bool HasConnectionObject() const { return mConnectionObject != BLE_CONNECTION_UNINITIALIZED; }
     BLE_CONNECTION_OBJECT GetConnectionObject() const { return mConnectionObject; }
     RendezvousParameters & SetConnectionObject(BLE_CONNECTION_OBJECT connObj)
     {
@@ -96,40 +98,13 @@ private:
     uint32_t mSetupPINCode  = 0;          ///< the target peripheral setup PIN Code
     uint16_t mDiscriminator = UINT16_MAX; ///< the target peripheral discriminator
 
-    PASEVerifier mPASEVerifier;
+    Spake2pVerifier mPASEVerifier;
     bool mHasPASEVerifier = false;
 
 #if CONFIG_NETWORK_LAYER_BLE
     Ble::BleLayer * mBleLayer               = nullptr;
-    BLE_CONNECTION_OBJECT mConnectionObject = 0;
+    BLE_CONNECTION_OBJECT mConnectionObject = BLE_CONNECTION_UNINITIALIZED;
 #endif // CONFIG_NETWORK_LAYER_BLE
-};
-
-class CommissioningParameters
-{
-public:
-    bool HasCSRNonce() const { return mCSRNonce.HasValue(); }
-    bool HasAttestationNonce() const { return mAttestationNonce.HasValue(); }
-    const Optional<ByteSpan> GetCSRNonce() const { return mCSRNonce; }
-    const Optional<ByteSpan> GetAttestationNonce() const { return mAttestationNonce; }
-
-    // The lifetime of the buffer csrNonce is pointing to, should exceed the lifetime of CommissioningParameters object.
-    CommissioningParameters & SetCSRNonce(ByteSpan csrNonce)
-    {
-        mCSRNonce.SetValue(csrNonce);
-        return *this;
-    }
-
-    // The lifetime of the buffer attestationNonce is pointing to, should exceed the lifetime of CommissioningParameters object.
-    CommissioningParameters & SetAttestationNonce(ByteSpan attestationNonce)
-    {
-        mAttestationNonce.SetValue(attestationNonce);
-        return *this;
-    }
-
-private:
-    Optional<ByteSpan> mCSRNonce;         ///< CSR Nonce passed by the commissioner
-    Optional<ByteSpan> mAttestationNonce; ///< Attestation Nonce passed by the commissioner
 };
 
 } // namespace chip

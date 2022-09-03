@@ -1,0 +1,51 @@
+# Copyright (c) 2021 Project CHIP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Auto-generated scripts for harness use only, please review before automation. The endpoints and cluster names are currently set to default
+
+name: 3.4.4. [TC-SC-4.4] Operational Discovery - Controller [DUT - Controller]
+
+PICS:
+    - PICS_MCORE_ROLE_CONTROLLER
+
+config:
+    nodeId: 0x12344321
+    cluster: "Basic"
+    endpoint: 0
+
+tests:
+    - label: "TH starts commissioning process with DUT"
+      verification: |
+          verification step to be updated.
+      disabled: true
+
+    - label: "DUT reads nodelabel attribute from TH"
+      PICS: BINFO.C.A0005
+      verification: |
+          verification step to be updated.
+      disabled: true
+
+    - label: "Change the IP address of TH by any means within the same network"
+      verification: |
+          1. Take two routers connected to the same ISP as input.
+          2. Execute step 1 to step 5 using Router1 Configuration.
+          3. Once step 1 to step 5 are executed in Router1 switch TH and DUT to Router2.
+          4. Execute step 1 to step 5 using Router2 Configuration.
+          5. Check the IP so that the Routers(Router1 and Router2) will have different IPs to Raspi.
+      disabled: true
+
+    - label: "DUT reads nodelabel attribute from TH"
+      PICS: BINFO.C.A0005
+      verification: |
+          verification step to be updated.
+      disabled: true

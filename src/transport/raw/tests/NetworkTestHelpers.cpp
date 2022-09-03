@@ -36,28 +36,25 @@ CHIP_ERROR IOContext::Init()
 
     InitNetwork();
 
-    mSystemLayer = &gSystemLayer;
-    mInetLayer   = &gInet;
+    mSystemLayer        = &gSystemLayer;
+    mTCPEndPointManager = &gTCP;
+    mUDPEndPointManager = &gUDP;
 
     return err;
 }
 
 // Shutdown all layers, finalize operations
-CHIP_ERROR IOContext::Shutdown()
+void IOContext::Shutdown()
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-
     ShutdownNetwork();
-    gSystemLayer.Shutdown();
+    ShutdownSystemLayer();
     Platform::MemoryShutdown();
-
-    return err;
 }
 
 void IOContext::DriveIO()
 {
-    // Set the select timeout to 100ms
-    constexpr uint32_t kSleepTimeMilliseconds = 100;
+    // Set the select timeout to 10ms
+    constexpr uint32_t kSleepTimeMilliseconds = 10;
     ServiceEvents(kSleepTimeMilliseconds);
 }
 

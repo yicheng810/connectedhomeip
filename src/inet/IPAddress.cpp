@@ -33,7 +33,9 @@
 
 #include <inet/IPAddress.h>
 
+#include <inet/InetError.h>
 #include <lib/core/CHIPEncoding.h>
+#include <lib/support/CodeUtils.h>
 
 #include "arpa-inet-compatibility.h"
 
@@ -55,20 +57,7 @@ bool IPAddress::operator!=(const IPAddress & other) const
     return Addr[0] != other.Addr[0] || Addr[1] != other.Addr[1] || Addr[2] != other.Addr[2] || Addr[3] != other.Addr[3];
 }
 
-IPAddress & IPAddress::operator=(const IPAddress & other)
-{
-    if (this != &other)
-    {
-        Addr[0] = other.Addr[0];
-        Addr[1] = other.Addr[1];
-        Addr[2] = other.Addr[2];
-        Addr[3] = other.Addr[3];
-    }
-
-    return *this;
-}
-
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_SYSTEM_CONFIG_USE_LWIP && !CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 
 IPAddress::IPAddress(const ip6_addr_t & ipv6Addr)
 {
@@ -119,7 +108,6 @@ ip4_addr_t IPAddress::ToIPv4() const
 
 #endif // INET_CONFIG_ENABLE_IPV4
 
-#if LWIP_VERSION_MAJOR > 1 || LWIP_VERSION_MINOR >= 5
 ip_addr_t IPAddress::ToLwIPAddr(void) const
 {
     ip_addr_t ret;
@@ -128,26 +116,56 @@ ip_addr_t IPAddress::ToLwIPAddr(void) const
     {
 #if INET_CONFIG_ENABLE_IPV4
     case IPAddressType::kIPv4:
-        IP_SET_TYPE_VAL(ret, IPADDR_TYPE_V4);
-        *ip_2_ip4(&ret) = IPAddress::ToIPv4();
+        ip_addr_copy_from_ip4(ret, IPAddress::ToIPv4());
         break;
 #endif // INET_CONFIG_ENABLE_IPV4
 
     case IPAddressType::kIPv6:
-        IP_SET_TYPE_VAL(ret, IPADDR_TYPE_V6);
-        *ip_2_ip6(&ret) = IPAddress::ToIPv6();
+        ip_addr_copy_from_ip6(ret, IPAddress::ToIPv6());
         break;
 
     default:
-#if INET_CONFIG_ENABLE_IPV4
-        ret = *IP_ADDR_ANY;
-#else
         ret = *IP6_ADDR_ANY;
-#endif
         break;
     }
 
     return ret;
+}
+
+CHIP_ERROR IPAddress::ToLwIPAddr(IPAddressType addressType, ip_addr_t & outAddress) const
+{
+    VerifyOrReturnError(addressType != IPAddressType::kUnknown, CHIP_ERROR_INVALID_ARGUMENT);
+
+    switch (Type())
+    {
+#if INET_CONFIG_ENABLE_IPV4
+    case IPAddressType::kIPv4:
+        ip_addr_copy_from_ip4(outAddress, IPAddress::ToIPv4());
+        return (addressType == IPAddressType::kIPv6) ? INET_ERROR_WRONG_ADDRESS_TYPE : CHIP_NO_ERROR;
+#endif // INET_CONFIG_ENABLE_IPV4
+
+    case IPAddressType::kIPv6:
+        ip_addr_copy_from_ip6(outAddress, IPAddress::ToIPv6());
+#if INET_CONFIG_ENABLE_IPV4
+        return (addressType == IPAddressType::kIPv4) ? INET_ERROR_WRONG_ADDRESS_TYPE : CHIP_NO_ERROR;
+#else
+        return CHIP_NO_ERROR;
+#endif // INET_CONFIG_ENABLE_IPV4
+
+    case IPAddressType::kAny:
+#if INET_CONFIG_ENABLE_IPV4
+        if (addressType == IPAddressType::kIPv4)
+        {
+            outAddress = *IP4_ADDR_ANY;
+            return CHIP_NO_ERROR;
+        }
+#endif // INET_CONFIG_ENABLE_IPV4
+        outAddress = *IP6_ADDR_ANY;
+        return CHIP_NO_ERROR;
+
+    default:
+        return INET_ERROR_WRONG_ADDRESS_TYPE;
+    }
 }
 
 lwip_ip_addr_type IPAddress::ToLwIPAddrType(IPAddressType typ)
@@ -173,7 +191,6 @@ lwip_ip_addr_type IPAddress::ToLwIPAddrType(IPAddressType typ)
 
     return ret;
 }
-#endif // LWIP_VERSION_MAJOR > 1 || LWIP_VERSION_MINOR >= 5
 
 ip6_addr_t IPAddress::ToIPv6() const
 {
@@ -220,18 +237,47 @@ struct in6_addr IPAddress::ToIPv6() const
     return ipAddr;
 }
 
-IPAddress IPAddress::FromSockAddr(const SockAddr & sockaddr)
+CHIP_ERROR IPAddress::GetIPAddressFromSockAddr(const SockAddr & sockaddr, IPAddress & outIPAddress)
 {
 #if INET_CONFIG_ENABLE_IPV4
     if (sockaddr.any.sa_family == AF_INET)
-        return FromSockAddr(sockaddr.in);
+    {
+        outIPAddress = FromSockAddr(sockaddr.in);
+        return CHIP_NO_ERROR;
+    }
 #endif // INET_CONFIG_ENABLE_IPV4
     if (sockaddr.any.sa_family == AF_INET6)
-        return FromSockAddr(sockaddr.in6);
-    return Any;
+    {
+        outIPAddress = FromSockAddr(sockaddr.in6);
+        return CHIP_NO_ERROR;
+    }
+    return INET_ERROR_WRONG_ADDRESS_TYPE;
 }
 
 #endif // CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_CONFIG_USE_NETWORK_FRAMEWORK
+
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
+IPAddress::IPAddress(const otIp6Address & ipv6Addr)
+{
+    static_assert(sizeof(ipv6Addr.mFields.m32) == sizeof(Addr), "otIp6Address size mismatch");
+    memcpy(Addr, ipv6Addr.mFields.m32, sizeof(Addr));
+}
+otIp6Address IPAddress::ToIPv6() const
+{
+    otIp6Address otAddr;
+    static_assert(sizeof(otAddr.mFields.m32) == sizeof(Addr), "otIp6Address size mismatch");
+    memcpy(otAddr.mFields.m32, Addr, sizeof(otAddr.mFields.m32));
+    return otAddr;
+}
+
+IPAddress IPAddress::FromOtAddr(const otIp6Address & address)
+{
+    IPAddress addr;
+    static_assert(sizeof(address.mFields.m32) == sizeof(addr), "otIp6Address size mismatch");
+    memcpy(addr.Addr, address.mFields.m32, sizeof(addr.Addr));
+    return addr;
+}
+#endif // CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 
 // Is address an IPv4 address encoded in IPv6 format?
 bool IPAddress::IsIPv4() const

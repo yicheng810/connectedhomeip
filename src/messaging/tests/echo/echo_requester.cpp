@@ -60,6 +60,7 @@ chip::Protocols::Echo::EchoClient gEchoClient;
 chip::TransportMgr<chip::Transport::UDP> gUDPManager;
 chip::TransportMgr<chip::Transport::TCP<kMaxTcpActiveConnectionCount, kMaxTcpPendingPackets>> gTCPManager;
 chip::Inet::IPAddress gDestAddr;
+chip::SessionHolder gSession;
 
 // The last time a CHIP Echo was attempted to be sent.
 chip::System::Clock::Timestamp gLastEchoTime = chip::System::Clock::kZero;
@@ -77,7 +78,7 @@ void EchoTimerHandler(chip::System::Layer * systemLayer, void * appState);
 
 void Shutdown()
 {
-    chip::DeviceLayer::SystemLayer().CancelTimer(EchoTimerHandler, NULL);
+    chip::DeviceLayer::SystemLayer().CancelTimer(EchoTimerHandler, nullptr);
     gEchoClient.Shutdown();
     ShutdownChip();
 }
@@ -123,7 +124,7 @@ CHIP_ERROR SendEchoRequest()
 
     gLastEchoTime = chip::System::SystemClock().GetMonotonicTimestamp();
 
-    err = chip::DeviceLayer::SystemLayer().StartTimer(gEchoInterval, EchoTimerHandler, NULL);
+    err = chip::DeviceLayer::SystemLayer().StartTimer(gEchoInterval, EchoTimerHandler, nullptr);
     if (err != CHIP_NO_ERROR)
     {
         printf("Unable to schedule timer\n");
@@ -141,7 +142,7 @@ CHIP_ERROR SendEchoRequest()
     else
     {
         printf("Send echo request failed, err: %s\n", chip::ErrorStr(err));
-        chip::DeviceLayer::SystemLayer().CancelTimer(EchoTimerHandler, NULL);
+        chip::DeviceLayer::SystemLayer().CancelTimer(EchoTimerHandler, nullptr);
     }
 
     return err;
@@ -149,27 +150,19 @@ CHIP_ERROR SendEchoRequest()
 
 CHIP_ERROR EstablishSecureSession()
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-
-    chip::Optional<chip::Transport::PeerAddress> peerAddr;
-    chip::SecurePairingUsingTestSecret * testSecurePairingSecret = chip::Platform::New<chip::SecurePairingUsingTestSecret>();
-    VerifyOrExit(testSecurePairingSecret != nullptr, err = CHIP_ERROR_NO_MEMORY);
-
+    chip::Transport::PeerAddress peerAddr;
     if (gUseTCP)
     {
-        peerAddr = chip::Optional<chip::Transport::PeerAddress>::Value(chip::Transport::PeerAddress::TCP(gDestAddr, CHIP_PORT));
+        peerAddr = chip::Transport::PeerAddress::TCP(gDestAddr, CHIP_PORT);
     }
     else
     {
-        peerAddr = chip::Optional<chip::Transport::PeerAddress>::Value(
-            chip::Transport::PeerAddress::UDP(gDestAddr, CHIP_PORT, chip::Inet::InterfaceId::Null()));
+        peerAddr = chip::Transport::PeerAddress::UDP(gDestAddr, CHIP_PORT, chip::Inet::InterfaceId::Null());
     }
 
     // Attempt to connect to the peer.
-    err = gSessionManager.NewPairing(peerAddr, chip::kTestDeviceNodeId, testSecurePairingSecret,
-                                     chip::CryptoContext::SessionRole::kInitiator, gFabricIndex);
-
-exit:
+    CHIP_ERROR err = gSessionManager.InjectPaseSessionWithTestKey(gSession, 1, chip::kTestDeviceNodeId, 1, gFabricIndex, peerAddr,
+                                                                  chip::CryptoContext::SessionRole::kInitiator);
     if (err != CHIP_NO_ERROR)
     {
         printf("Establish secure session failed, err: %s\n", chip::ErrorStr(err));
@@ -228,22 +221,24 @@ int main(int argc, char * argv[])
 
     if (gUseTCP)
     {
-        err = gTCPManager.Init(chip::Transport::TcpListenParameters(&chip::DeviceLayer::InetLayer())
+        err = gTCPManager.Init(chip::Transport::TcpListenParameters(chip::DeviceLayer::TCPEndPointManager())
                                    .SetAddressType(chip::Inet::IPAddressType::kIPv6)
                                    .SetListenPort(ECHO_CLIENT_PORT));
         SuccessOrExit(err);
 
-        err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gTCPManager, &gMessageCounterManager);
+        err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gTCPManager, &gMessageCounterManager, &gStorage,
+                                   &gFabricTable);
         SuccessOrExit(err);
     }
     else
     {
-        err = gUDPManager.Init(chip::Transport::UdpListenParameters(&chip::DeviceLayer::InetLayer())
+        err = gUDPManager.Init(chip::Transport::UdpListenParameters(chip::DeviceLayer::UDPEndPointManager())
                                    .SetAddressType(chip::Inet::IPAddressType::kIPv6)
                                    .SetListenPort(ECHO_CLIENT_PORT));
         SuccessOrExit(err);
 
-        err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gUDPManager, &gMessageCounterManager);
+        err = gSessionManager.Init(&chip::DeviceLayer::SystemLayer(), &gUDPManager, &gMessageCounterManager, &gStorage,
+                                   &gFabricTable);
         SuccessOrExit(err);
     }
 
@@ -257,13 +252,13 @@ int main(int argc, char * argv[])
     err = EstablishSecureSession();
     SuccessOrExit(err);
 
-    err = gEchoClient.Init(&gExchangeManager, chip::SessionHandle(chip::kTestDeviceNodeId, 1, 1, gFabricIndex));
+    err = gEchoClient.Init(&gExchangeManager, gSession.Get().Value());
     SuccessOrExit(err);
 
     // Arrange to get a callback whenever an Echo Response is received.
     gEchoClient.SetEchoResponseReceived(HandleEchoResponseReceived);
 
-    err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::kZero, EchoTimerHandler, NULL);
+    err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::kZero, EchoTimerHandler, nullptr);
     SuccessOrExit(err);
 
     chip::DeviceLayer::PlatformMgr().RunEventLoop();

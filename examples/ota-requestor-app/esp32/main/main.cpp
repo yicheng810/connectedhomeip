@@ -15,7 +15,6 @@
  *    limitations under the License.
  */
 
-#include "CHIPDeviceManager.h"
 #include "DeviceCallbacks.h"
 #include "app/util/af-enums.h"
 #include "app/util/af.h"
@@ -28,123 +27,67 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
-#include <app/server/Server.h>
-
-#include <cmath>
-#include <cstdio>
-#include <string>
-#include <vector>
-
+#include <common/CHIPDeviceManager.h>
+#include <common/Esp32AppServer.h>
 #include <credentials/DeviceAttestationCredsProvider.h>
 #include <credentials/examples/DeviceAttestationCredsExample.h>
-
 #include <lib/support/ErrorStr.h>
+#include <ota/OTAHelper.h>
+#include <shell_extension/launch.h>
 
-#include "OTARequesterImpl.h"
-#include <argtable3/argtable3.h>
-#include <esp_console.h>
+#include "OTAImageProcessorImpl.h"
+
+#if CONFIG_ENABLE_PW_RPC
+#include "Rpc.h"
+#endif
+
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+#include <platform/ESP32/ESP32FactoryDataProvider.h>
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+
+#if CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+#include <platform/ESP32/ESP32DeviceInfoProvider.h>
+#else
+#include <DeviceInfoProviderImpl.h>
+#endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
 
 using namespace ::chip;
 using namespace ::chip::System;
-using namespace ::chip::Credentials;
 using namespace ::chip::DeviceManager;
-using namespace ::chip::DeviceLayer;
-
-struct CmdArgs
-{
-    struct arg_str * ipAddr;
-    struct arg_int * nodeId;
-    struct arg_end * end;
-};
+using namespace chip::Shell;
+using namespace ::chip::Credentials;
 
 namespace {
 const char * TAG = "ota-requester-app";
-static DeviceCallbacks EchoCallbacks;
-CmdArgs queryImageCmdArgs, applyUpdateCmdArgs;
+static AppDeviceCallbacks EchoCallbacks;
+
+constexpr EndpointId kNetworkCommissioningEndpointSecondary = 0xFFFE;
+
+static void InitServer(intptr_t context)
+{
+    Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
+
+    // We only have network commissioning on endpoint 0.
+    emberAfEndpointEnableDisable(kNetworkCommissioningEndpointSecondary, false);
+}
+
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+DeviceLayer::ESP32FactoryDataProvider sFactoryDataProvider;
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+
+#if CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+DeviceLayer::ESP32DeviceInfoProvider gExampleDeviceInfoProvider;
+#else
+DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
+#endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
 } // namespace
-
-void QueryImageTimerHandler(Layer * systemLayer, void * appState)
-{
-    ESP_LOGI(TAG, "Calling SendQueryImageCommand()");
-    OTARequesterImpl::GetInstance().SendQueryImageCommand(queryImageCmdArgs.ipAddr->sval[0], queryImageCmdArgs.nodeId->ival[0]);
-}
-
-void ApplyUpdateTimerHandler(Layer * systemLayer, void * appState)
-{
-    ESP_LOGI(TAG, "Calling SendApplyUpdateRequestCommand()");
-    OTARequesterImpl::GetInstance().SendApplyUpdateRequestCommand(queryImageCmdArgs.ipAddr->sval[0],
-                                                                  queryImageCmdArgs.nodeId->ival[0]);
-}
-
-int ESPQueryImageCmdHandler(int argc, char ** argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **) &queryImageCmdArgs);
-    if (nerrors != 0)
-    {
-        arg_print_errors(stderr, queryImageCmdArgs.end, argv[0]);
-        return 1;
-    }
-    ESP_LOGI(TAG, "ipAddr:%s nodeId:%x", queryImageCmdArgs.ipAddr->sval[0], queryImageCmdArgs.nodeId->ival[0]);
-
-    /* Start one shot timer with 1 second timeout to send ApplyUpdateRequest command */
-    chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Milliseconds32(1 * 1000), QueryImageTimerHandler, nullptr);
-    return 0;
-}
-
-int ESPApplyUpdateCmdHandler(int argc, char ** argv)
-{
-    int nerrors = arg_parse(argc, argv, (void **) &applyUpdateCmdArgs);
-    if (nerrors != 0)
-    {
-        arg_print_errors(stderr, applyUpdateCmdArgs.end, argv[0]);
-        return 1;
-    }
-    ESP_LOGI(TAG, "ipAddr:%s nodeId:%x", applyUpdateCmdArgs.ipAddr->sval[0], applyUpdateCmdArgs.nodeId->ival[0]);
-
-    /* Start one shot timer with 1 second timeout to Query for OTA image */
-    chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Milliseconds32(1 * 1000), ApplyUpdateTimerHandler, nullptr);
-    return 0;
-}
-
-void ESPInitConsole(void)
-{
-    esp_console_repl_t * repl                = NULL;
-    esp_console_repl_config_t replConfig     = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    esp_console_dev_uart_config_t uartConfig = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
-    /* Prompt to be printed before each line.
-     * This can be customized, made dynamic, etc.
-     */
-    replConfig.prompt = "esp32 >";
-
-    esp_console_register_help_command();
-
-    esp_console_cmd_t queryImageCommand, applyUpdateCommand;
-    memset(&queryImageCommand, 0, sizeof(queryImageCommand));
-    memset(&applyUpdateCommand, 0, sizeof(applyUpdateCommand));
-
-    queryImageCmdArgs.ipAddr = arg_str0(NULL, NULL, "<ipv4>", "OTA Provider IP Address");
-    queryImageCmdArgs.nodeId = arg_int0(NULL, NULL, "<nodeID>", "OTA Provider Node ID in decimal");
-    queryImageCmdArgs.end    = arg_end(1);
-
-    queryImageCommand.command = "QueryImage", queryImageCommand.help = "Query for OTA image",
-    queryImageCommand.func = &ESPQueryImageCmdHandler, queryImageCommand.argtable = &queryImageCmdArgs;
-
-    applyUpdateCmdArgs.ipAddr = arg_str0(NULL, NULL, "<ipv4>", "OTA Provider IP Address");
-    applyUpdateCmdArgs.nodeId = arg_int0(NULL, NULL, "<nodeID>", "OTA Provider Node ID in decimal");
-    applyUpdateCmdArgs.end    = arg_end(1);
-
-    applyUpdateCommand.command = "ApplyUpdateRequest", applyUpdateCommand.help = "Request to OTA update image",
-    applyUpdateCommand.func = &ESPApplyUpdateCmdHandler, applyUpdateCommand.argtable = &applyUpdateCmdArgs;
-
-    esp_console_cmd_register(&queryImageCommand);
-    esp_console_cmd_register(&applyUpdateCommand);
-
-    esp_console_new_repl_uart(&uartConfig, &replConfig, &repl);
-    esp_console_start_repl(repl);
-}
 
 extern "C" void app_main()
 {
+#if CONFIG_ENABLE_PW_RPC
+    chip::rpc::Init();
+#endif
+
     ESP_LOGI(TAG, "OTA Requester!");
 
     /* Print chip information */
@@ -166,6 +109,13 @@ extern "C" void app_main()
         return;
     }
 
+#if CONFIG_ENABLE_CHIP_SHELL
+    chip::LaunchShell();
+    OTARequestorCommands::GetInstance().Register();
+#endif // CONFIG_ENABLE_CHIP_SHELL
+
+    DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
+
     CHIPDeviceManager & deviceMgr = CHIPDeviceManager::GetInstance();
 
     CHIP_ERROR error = deviceMgr.Init(&EchoCallbacks);
@@ -175,21 +125,15 @@ extern "C" void app_main()
         return;
     }
 
-    chip::Server::GetInstance().Init();
-
-    // Initialize device attestation config
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+    SetCommissionableDataProvider(&sFactoryDataProvider);
+    SetDeviceAttestationCredentialsProvider(&sFactoryDataProvider);
+#if CONFIG_ENABLE_ESP32_DEVICE_INSTANCE_INFO_PROVIDER
+    SetDeviceInstanceInfoProvider(&sFactoryDataProvider);
+#endif
+#else
     SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
 
-    ESPInitConsole();
-}
-
-// TODO: We should use the function definition in /src/app/clusters/ota-requestor/ClusterInterface.cpp
-// Temporarily add this function.
-
-bool emberAfOtaSoftwareUpdateRequestorClusterAnnounceOtaProviderCallback(
-    chip::app::CommandHandler * commandObj, const chip::app::ConcreteCommandPath & commandPath,
-    const chip::app::Clusters::OtaSoftwareUpdateRequestor::Commands::AnnounceOtaProvider::DecodableType & commandData)
-{
-    emberAfSendImmediateDefaultResponse(EMBER_ZCL_STATUS_SUCCESS);
-    return true;
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
 }

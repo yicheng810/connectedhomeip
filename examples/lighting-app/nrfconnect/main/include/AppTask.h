@@ -20,9 +20,13 @@
 
 #include "AppEvent.h"
 #include "LEDWidget.h"
-#include "LightingManager.h"
+#include "PWMDevice.h"
 
 #include <platform/CHIPDeviceLayer.h>
+
+#if CONFIG_CHIP_FACTORY_DATA
+#include <platform/nrfconnect/FactoryDataProvider.h>
+#endif
 
 #ifdef CONFIG_CHIP_PW_RPC
 #include "Rpc.h"
@@ -35,15 +39,20 @@
 #include <cstdint>
 
 struct k_timer;
+struct Identify;
 
 class AppTask
 {
 public:
-    int StartApp();
+    CHIP_ERROR StartApp();
 
-    void PostLightingActionRequest(LightingManager::Action_t aAction);
+    void PostLightingActionRequest(PWMDevice::Action_t aAction);
     void PostEvent(AppEvent * event);
     void UpdateClusterState();
+
+    static void IdentifyStartHandler(Identify *);
+    static void IdentifyStopHandler(Identify *);
+    PWMDevice & GetLightingDevice() { return mPWMDevice; }
 
 private:
 #ifdef CONFIG_CHIP_PW_RPC
@@ -51,10 +60,10 @@ private:
 #endif
 
     friend AppTask & GetAppTask(void);
-    int Init();
+    CHIP_ERROR Init();
 
-    static void ActionInitiated(LightingManager::Action_t aAction, int32_t aActor);
-    static void ActionCompleted(LightingManager::Action_t aAction, int32_t aActor);
+    static void ActionInitiated(PWMDevice::Action_t aAction, int32_t aActor);
+    static void ActionCompleted(PWMDevice::Action_t aAction, int32_t aActor);
 
     void CancelTimer(void);
 
@@ -65,7 +74,6 @@ private:
     static void UpdateLedStateEventHandler(AppEvent * aEvent);
     static void FunctionTimerEventHandler(AppEvent * aEvent);
     static void FunctionHandler(AppEvent * aEvent);
-    static void StartThreadHandler(AppEvent * aEvent);
     static void LightingActionEventHandler(AppEvent * aEvent);
     static void StartBLEAdvertisementHandler(AppEvent * aEvent);
 
@@ -91,7 +99,12 @@ private:
 
     Function_t mFunction      = kFunction_NoneSelected;
     bool mFunctionTimerActive = false;
+    PWMDevice mPWMDevice;
     static AppTask sAppTask;
+
+#if CONFIG_CHIP_FACTORY_DATA
+    chip::DeviceLayer::FactoryDataProvider<chip::DeviceLayer::InternalFlashFactoryData> mFactoryDataProvider;
+#endif
 };
 
 inline AppTask & GetAppTask(void)

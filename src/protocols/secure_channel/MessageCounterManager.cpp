@@ -21,6 +21,8 @@
  *
  */
 
+#include <protocols/secure_channel/MessageCounterManager.h>
+
 #include <lib/core/CHIPCore.h>
 #include <lib/core/CHIPEncoding.h>
 #include <lib/core/CHIPKeyIds.h>
@@ -32,7 +34,6 @@
 #include <messaging/Flags.h>
 #include <protocols/Protocols.h>
 #include <protocols/secure_channel/Constants.h>
-#include <protocols/secure_channel/MessageCounterManager.h>
 
 namespace chip {
 namespace secure_channel {
@@ -60,7 +61,7 @@ void MessageCounterManager::Shutdown()
     }
 }
 
-CHIP_ERROR MessageCounterManager::StartSync(SessionHandle session, Transport::SecureSession * state)
+CHIP_ERROR MessageCounterManager::StartSync(const SessionHandle & session, Transport::SecureSession * state)
 {
     // Initiate message counter synchronization if no message counter synchronization is in progress.
     Transport::PeerMessageCounter & counter = state->GetSessionMessageCounter().GetPeerMessageCounter();
@@ -72,7 +73,7 @@ CHIP_ERROR MessageCounterManager::StartSync(SessionHandle session, Transport::Se
     return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR MessageCounterManager::QueueReceivedMessageAndStartSync(const PacketHeader & packetHeader, SessionHandle session,
+CHIP_ERROR MessageCounterManager::QueueReceivedMessageAndStartSync(const PacketHeader & packetHeader, const SessionHandle & session,
                                                                    Transport::SecureSession * state,
                                                                    const Transport::PeerAddress & peerAddress,
                                                                    System::PacketBufferHandle && msgBuf)
@@ -88,6 +89,13 @@ CHIP_ERROR MessageCounterManager::QueueReceivedMessageAndStartSync(const PacketH
     return CHIP_NO_ERROR;
 }
 
+CHIP_ERROR MessageCounterManager::OnUnsolicitedMessageReceived(const PayloadHeader & payloadHeader, ExchangeDelegate *& newDelegate)
+{
+    // MessageCounterManager do not use an extra context to handle messages
+    newDelegate = this;
+    return CHIP_NO_ERROR;
+}
+
 CHIP_ERROR MessageCounterManager::OnMessageReceived(Messaging::ExchangeContext * exchangeContext,
                                                     const PayloadHeader & payloadHeader, System::PacketBufferHandle && msgBuf)
 {
@@ -95,7 +103,7 @@ CHIP_ERROR MessageCounterManager::OnMessageReceived(Messaging::ExchangeContext *
     {
         return HandleMsgCounterSyncReq(exchangeContext, std::move(msgBuf));
     }
-    else if (payloadHeader.HasMessageType(Protocols::SecureChannel::MsgType::MsgCounterSyncRsp))
+    if (payloadHeader.HasMessageType(Protocols::SecureChannel::MsgType::MsgCounterSyncRsp))
     {
         return HandleMsgCounterSyncResp(exchangeContext, std::move(msgBuf));
     }
@@ -104,15 +112,13 @@ CHIP_ERROR MessageCounterManager::OnMessageReceived(Messaging::ExchangeContext *
 
 void MessageCounterManager::OnResponseTimeout(Messaging::ExchangeContext * exchangeContext)
 {
-    Transport::SecureSession * state = mExchangeMgr->GetSessionManager()->GetSecureSession(exchangeContext->GetSessionHandle());
-
-    if (state != nullptr)
+    if (exchangeContext->HasSessionHandle())
     {
-        state->GetSessionMessageCounter().GetPeerMessageCounter().SyncFailed();
+        exchangeContext->GetSessionHandle()->AsSecureSession()->GetSessionMessageCounter().GetPeerMessageCounter().SyncFailed();
     }
     else
     {
-        ChipLogError(SecureChannel, "Timed out! Failed to clear message counter synchronization status.");
+        ChipLogError(SecureChannel, "MCSP Timeout! On a already released session.");
     }
 }
 
@@ -175,7 +181,7 @@ void MessageCounterManager::ProcessPendingMessages(NodeId peerNodeId)
     }
 }
 
-CHIP_ERROR MessageCounterManager::SendMsgCounterSyncReq(SessionHandle session, Transport::SecureSession * state)
+CHIP_ERROR MessageCounterManager::SendMsgCounterSyncReq(const SessionHandle & session, Transport::SecureSession * state)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
@@ -214,7 +220,8 @@ exit:
             exchangeContext->Close();
         }
         state->GetSessionMessageCounter().GetPeerMessageCounter().SyncFailed();
-        ChipLogError(SecureChannel, "Failed to send message counter synchronization request with error:%s", ErrorStr(err));
+        ChipLogError(SecureChannel, "Failed to send message counter synchronization request with error:%" CHIP_ERROR_FORMAT,
+                     err.Format());
     }
 
     return err;
@@ -223,39 +230,20 @@ exit:
 CHIP_ERROR MessageCounterManager::SendMsgCounterSyncResp(Messaging::ExchangeContext * exchangeContext,
                                                          FixedByteSpan<kChallengeSize> challenge)
 {
-    CHIP_ERROR err                   = CHIP_NO_ERROR;
-    Transport::SecureSession * state = nullptr;
     System::PacketBufferHandle msgBuf;
-    uint8_t * msg = nullptr;
+    VerifyOrDie(exchangeContext->HasSessionHandle());
 
-    state = mExchangeMgr->GetSessionManager()->GetSecureSession(exchangeContext->GetSessionHandle());
-    VerifyOrExit(state != nullptr, err = CHIP_ERROR_NOT_CONNECTED);
+    VerifyOrReturnError(exchangeContext->GetSessionHandle()->IsGroupSession(), CHIP_ERROR_INVALID_ARGUMENT);
 
-    // Allocate new buffer.
-    msgBuf = MessagePacketBuffer::New(kSyncRespMsgSize);
-    VerifyOrExit(!msgBuf.IsNull(), err = CHIP_ERROR_NO_MEMORY);
+    // NOTE: not currently implemented. When implementing, the following should be done:
+    //    - allocate a new buffer: MessagePacketBuffer::New
+    //    - setup payload and place the local message counter + challange in it
+    //    - exchangeContext->SendMessage(Protocols::SecureChannel::MsgType::MsgCounterSyncRsp, ...)
+    //
+    // You can view the history of this file for a partial implementation that got
+    // removed due to it using non-group sessions.
 
-    msg = msgBuf->Start();
-
-    {
-        Encoding::LittleEndian::BufferWriter bbuf(msg, kSyncRespMsgSize);
-        bbuf.Put32(state->GetSessionMessageCounter().GetLocalMessageCounter().Value());
-        bbuf.Put(challenge.data(), kChallengeSize);
-        VerifyOrExit(bbuf.Fit(), err = CHIP_ERROR_NO_MEMORY);
-    }
-
-    msgBuf->SetDataLength(kSyncRespMsgSize);
-
-    err = exchangeContext->SendMessage(Protocols::SecureChannel::MsgType::MsgCounterSyncRsp, std::move(msgBuf),
-                                       Messaging::SendFlags(Messaging::SendMessageFlags::kNoAutoRequestAck));
-
-exit:
-    if (err != CHIP_NO_ERROR)
-    {
-        ChipLogError(SecureChannel, "Failed to send message counter synchronization response with error:%s", ErrorStr(err));
-    }
-
-    return err;
+    return CHIP_ERROR_NOT_IMPLEMENTED;
 }
 
 CHIP_ERROR MessageCounterManager::HandleMsgCounterSyncReq(Messaging::ExchangeContext * exchangeContext,
@@ -277,7 +265,7 @@ CHIP_ERROR MessageCounterManager::HandleMsgCounterSyncReq(Messaging::ExchangeCon
 exit:
     if (err != CHIP_NO_ERROR)
     {
-        ChipLogError(SecureChannel, "Failed to handle MsgCounterSyncReq message with error:%s", ErrorStr(err));
+        ChipLogError(SecureChannel, "Failed to handle MsgCounterSyncReq message with error:%" CHIP_ERROR_FORMAT, err.Format());
     }
 
     return err;
@@ -288,17 +276,14 @@ CHIP_ERROR MessageCounterManager::HandleMsgCounterSyncResp(Messaging::ExchangeCo
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
-    Transport::SecureSession * state = nullptr;
-    uint32_t syncCounter             = 0;
+    uint32_t syncCounter = 0;
 
     const uint8_t * resp = msgBuf->Start();
     size_t resplen       = msgBuf->DataLength();
 
     ChipLogDetail(SecureChannel, "Received MsgCounterSyncResp response");
 
-    // Find an active connection to the specified peer node
-    state = mExchangeMgr->GetSessionManager()->GetSecureSession(exchangeContext->GetSessionHandle());
-    VerifyOrExit(state != nullptr, err = CHIP_ERROR_NOT_CONNECTED);
+    VerifyOrDie(exchangeContext->HasSessionHandle());
 
     VerifyOrExit(msgBuf->DataLength() == kSyncRespMsgSize, err = CHIP_ERROR_INVALID_MESSAGE_LENGTH);
 
@@ -310,16 +295,17 @@ CHIP_ERROR MessageCounterManager::HandleMsgCounterSyncResp(Messaging::ExchangeCo
 
     // Verify that the response field matches the expected Challenge field for the exchange.
     err =
-        state->GetSessionMessageCounter().GetPeerMessageCounter().VerifyChallenge(syncCounter, FixedByteSpan<kChallengeSize>(resp));
+        exchangeContext->GetSessionHandle()->AsSecureSession()->GetSessionMessageCounter().GetPeerMessageCounter().VerifyChallenge(
+            syncCounter, FixedByteSpan<kChallengeSize>(resp));
     SuccessOrExit(err);
 
     // Process all queued incoming messages after message counter synchronization is completed.
-    ProcessPendingMessages(exchangeContext->GetSessionHandle().GetPeerNodeId());
+    ProcessPendingMessages(exchangeContext->GetSessionHandle()->AsSecureSession()->GetPeerNodeId());
 
 exit:
     if (err != CHIP_NO_ERROR)
     {
-        ChipLogError(SecureChannel, "Failed to handle MsgCounterSyncResp message with error:%s", ErrorStr(err));
+        ChipLogError(SecureChannel, "Failed to handle MsgCounterSyncResp message with error:%" CHIP_ERROR_FORMAT, err.Format());
     }
 
     return err;

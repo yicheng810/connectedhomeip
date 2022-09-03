@@ -16,51 +16,53 @@
  */
 
 #include "TargetNavigatorManager.h"
-#include <app-common/zap-generated/cluster-objects.h>
-#include <app/clusters/target-navigator-server/target-navigator-server.h>
-#include <app/util/af.h>
-#include <app/util/basic-types.h>
-#include <lib/core/CHIPSafeCasts.h>
-#include <lib/support/CodeUtils.h>
-
-#include <map>
-#include <string>
 
 using namespace std;
+using namespace chip::app;
+using namespace chip::app::Clusters::TargetNavigator;
 
-CHIP_ERROR TargetNavigatorManager::Init()
+TargetNavigatorManager::TargetNavigatorManager(std::list<std::string> targets, uint8_t currentTarget)
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
-
-    SuccessOrExit(err);
-exit:
-    return err;
+    mTargets       = targets;
+    mCurrentTarget = currentTarget;
 }
 
-CHIP_ERROR TargetNavigatorManager::proxyGetTargetInfoList(chip::app::AttributeValueEncoder & aEncoder)
+CHIP_ERROR TargetNavigatorManager::HandleGetTargetList(AttributeValueEncoder & aEncoder)
 {
-    return aEncoder.EncodeList([](const auto & encoder) -> CHIP_ERROR {
-        // TODO: Insert code here
-        int maximumVectorSize = 2;
-        char name[]           = "exampleName";
-
-        for (int i = 0; i < maximumVectorSize; ++i)
+    // NOTE: the ids for each target start at 1 so that we can reserve 0 as "no current target"
+    return aEncoder.EncodeList([this](const auto & encoder) -> CHIP_ERROR {
+        int i = 0;
+        for (std::string & entry : mTargets)
         {
-            chip::app::Clusters::TargetNavigator::Structs::NavigateTargetTargetInfo::Type targetInfo;
-            targetInfo.name       = chip::CharSpan(name, sizeof(name) - 1);
-            targetInfo.identifier = static_cast<uint8_t>(1 + i);
-            ReturnErrorOnFailure(encoder.Encode(targetInfo));
+            Structs::TargetInfo::Type outputInfo;
+            outputInfo.identifier = static_cast<uint8_t>(i + 1);
+            outputInfo.name       = CharSpan::fromCharString(entry.c_str());
+            ReturnErrorOnFailure(encoder.Encode(outputInfo));
+            i++;
         }
         return CHIP_NO_ERROR;
     });
 }
 
-TargetNavigatorResponse targetNavigatorClusterNavigateTarget(uint8_t target, std::string data)
+uint8_t TargetNavigatorManager::HandleGetCurrentTarget()
 {
-    // TODO: Insert code here
-    TargetNavigatorResponse response;
-    const char * testData = "data response";
-    response.data         = (uint8_t *) testData;
-    response.status       = EMBER_ZCL_APPLICATION_LAUNCHER_STATUS_SUCCESS;
-    return response;
+    return mCurrentTarget;
+}
+
+void TargetNavigatorManager::HandleNavigateTarget(CommandResponseHelper<NavigateTargetResponseType> & helper,
+                                                  const uint64_t & target, const CharSpan & data)
+{
+    NavigateTargetResponseType response;
+    if (target == kNoCurrentTarget || target > mTargets.size())
+    {
+        response.data   = chip::MakeOptional(CharSpan::fromCharString("error"));
+        response.status = TargetNavigatorStatusEnum::kTargetNotFound;
+        helper.Success(response);
+        return;
+    }
+    mCurrentTarget = static_cast<uint8_t>(target);
+
+    response.data   = chip::MakeOptional(CharSpan::fromCharString("data response"));
+    response.status = TargetNavigatorStatusEnum::kSuccess;
+    helper.Success(response);
 }

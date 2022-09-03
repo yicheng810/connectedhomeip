@@ -25,11 +25,13 @@ chip_test_suite("tests") {
   test_sources = [
     "TestBdxMessages.cpp",
     "TestBdxTransferSession.cpp",
+    "TestBdxUri.cpp",
   ]
 
   public_deps = [
     "${chip_root}/src/lib/core",
     "${chip_root}/src/lib/support",
+    "${chip_root}/src/lib/support:testing",
     "${chip_root}/src/protocols/bdx",
     "${nlio_root}:nlio",
     "${nlunit_test_root}:nlunit-test",

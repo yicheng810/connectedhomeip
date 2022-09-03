@@ -1,21 +1,23 @@
 # Matter
 
-![Builds](https://github.com/project-chip/connectedhomeip/workflows/Builds/badge.svg)
+[![Builds](https://github.com/project-chip/connectedhomeip/workflows/Builds/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/build.yaml)
 
-![Examples - EFR32](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20EFR32/badge.svg)
-![Examples - nRF Connect SDK](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20nRF%20Connect%20SDK/badge.svg)
-![Examples - QPG](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20QPG/badge.svg)
-![Examples - Linux Standalone](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20Linux%20Standalone/badge.svg)
-![Examples - ESP32](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20ESP32/badge.svg)
-![Examples - K32W with SE051](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20K32W%20with%20SE051/badge.svg)
+[![Examples - EFR32](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20EFR32/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-efr32.yaml)
+[![Examples - ESP32](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20ESP32/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-esp32.yaml)
+[![Examples - i.MX Linux](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20i.MX%20Linux/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-linux-imx.yaml)
+[![Examples - K32W with SE051](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20K32W%20with%20SE051/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-k32w.yaml)
+[![Examples - Linux Standalone](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20Linux%20Standalone/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-linux-standalone.yaml)
+[![Examples - nRF Connect SDK](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20nRF%20Connect%20SDK/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-nrfconnect.yaml)
+[![Examples - QPG](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20QPG/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-qpg.yaml)
+[![Examples - TI CC26X2X7](https://github.com/project-chip/connectedhomeip/workflows/Build%20example%20-%20TI%20CC26X2X7/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/examples-cc13x2x7_26x2x7.yaml)
 
-![Android](https://github.com/project-chip/connectedhomeip/workflows/Android/badge.svg)
+[![Android](https://github.com/project-chip/connectedhomeip/workflows/Android/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/android.yaml)
 
-![Unit / Interation Tests](https://github.com/project-chip/connectedhomeip/workflows/Unit%20/%20Interation%20Tests/badge.svg)
-![Cirque](https://github.com/project-chip/connectedhomeip/workflows/Cirque/badge.svg)
-![QEMU](https://github.com/project-chip/connectedhomeip/workflows/QEMU/badge.svg)
+[![Unit / Interation Tests](https://github.com/project-chip/connectedhomeip/workflows/Unit%20/%20Interation%20Tests/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/unit_integration_test.yaml)
+[![Cirque](https://github.com/project-chip/connectedhomeip/workflows/Cirque/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/cirque.yaml)
+[![QEMU](https://github.com/project-chip/connectedhomeip/workflows/QEMU/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/qemu.yaml)
 
-![ZAP Templates](https://github.com/project-chip/connectedhomeip/workflows/ZAP/badge.svg)
+[![ZAP Templates](https://github.com/project-chip/connectedhomeip/workflows/ZAP/badge.svg)](https://github.com/project-chip/connectedhomeip/actions/workflows/zap_templates.yaml)
 
 # What is Matter?
 
@@ -89,13 +91,13 @@ to help achieve our interoperability architectural goal. Matter will initially
 support Wi-Fi and Thread for core, operational communications and Bluetooth Low
 Energy (BLE) to simplify device commissioning and setup.
 
-The Application Layer can be further broken down seven main components:
+The Application Layer can be further broken down into seven main components:
 
 ![Matter Stack Architecture](docs/images/CHIP_Arch_Pyramid.png)
 
 1. **Application:** High order business logic of a device. For example, an
    application that is focused on lighting might contain logic to handle turning
-   on/off the bulb as well its color characteristics.
+   on/off the bulb as well as its color characteristics.
 
 2. **Data Model:** Data primitives that help describe the various
    functionalities of the devices. The Application operates on these data
@@ -116,7 +118,7 @@ The Application Layer can be further broken down seven main components:
 
 6. **Message Framing & Routing:** With an interaction encrypted and signed, the
    Message Layer constructs the payload format with required and optional header
-   fields; which specify properties of the message as well some routing
+   fields; which specify properties of the message as well as some routing
    information.
 
 7. **IP Framing & Transport Management:** After the final payload has been

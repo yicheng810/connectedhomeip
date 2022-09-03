@@ -17,142 +17,99 @@
  */
 
 #include <app/CASESessionManager.h>
+#include <lib/address_resolve/AddressResolve.h>
 
 namespace chip {
 
-CHIP_ERROR CASESessionManager::FindOrEstablishSession(NodeId nodeId, Callback::Callback<OnDeviceConnected> * onConnection,
-                                                      Callback::Callback<OnDeviceConnectionFailure> * onFailure)
+CHIP_ERROR CASESessionManager::Init(chip::System::Layer * systemLayer, const CASESessionManagerConfig & params)
 {
-    Dnssd::ResolvedNodeData resolutionData;
+    ReturnErrorOnFailure(params.sessionInitParams.Validate());
+    mConfig = params;
+    params.sessionInitParams.exchangeMgr->GetReliableMessageMgr()->RegisterSessionUpdateDelegate(this);
+    return AddressResolve::Resolver::Instance().Init(systemLayer);
+}
 
-    PeerId peerId = GetFabricInfo()->GetPeerIdForNode(nodeId);
+void CASESessionManager::FindOrEstablishSession(const ScopedNodeId & peerId, Callback::Callback<OnDeviceConnected> * onConnection,
+                                                Callback::Callback<OnDeviceConnectionFailure> * onFailure)
+{
+    ChipLogDetail(CASESessionManager, "FindOrEstablishSession: PeerId = [%d:" ChipLogFormatX64 "]", peerId.GetFabricIndex(),
+                  ChipLogValueX64(peerId.GetNodeId()));
 
-    bool nodeIDWasResolved = (mConfig.dnsCache != nullptr && mConfig.dnsCache->Lookup(peerId, resolutionData) == CHIP_NO_ERROR);
-
-    OperationalDeviceProxy * session = FindExistingSession(nodeId);
+    bool forAddressUpdate             = false;
+    OperationalSessionSetup * session = FindExistingSessionSetup(peerId, forAddressUpdate);
     if (session == nullptr)
     {
-        // TODO - Implement LRU to evict least recently used session to handle mActiveSessions pool exhaustion
-        if (nodeIDWasResolved)
-        {
-            session = mActiveSessions.CreateObject(mConfig.sessionInitParams, peerId, resolutionData);
-        }
-        else
-        {
-            session = mActiveSessions.CreateObject(mConfig.sessionInitParams, peerId);
-        }
+        ChipLogDetail(CASESessionManager, "FindOrEstablishSession: No existing OperationalSessionSetup instance found");
+
+        session = mConfig.sessionSetupPool->Allocate(mConfig.sessionInitParams, peerId, this);
 
         if (session == nullptr)
         {
-            onFailure->mCall(onFailure->mContext, nodeId, CHIP_ERROR_NO_MEMORY);
-            return CHIP_ERROR_NO_MEMORY;
+            if (onFailure != nullptr)
+            {
+                onFailure->mCall(onFailure->mContext, peerId, CHIP_ERROR_NO_MEMORY);
+            }
+            return;
         }
     }
-    else if (nodeIDWasResolved)
-    {
-        session->OnNodeIdResolved(resolutionData);
-    }
 
-    CHIP_ERROR err = session->Connect(onConnection, onFailure);
-    if (err != CHIP_NO_ERROR)
-    {
-        ReleaseSession(session);
-    }
-
-    return err;
+    session->Connect(onConnection, onFailure);
 }
 
-void CASESessionManager::ReleaseSession(NodeId nodeId)
+void CASESessionManager::ReleaseSessionsForFabric(FabricIndex fabricIndex)
 {
-    ReleaseSession(FindExistingSession(nodeId));
+    mConfig.sessionSetupPool->ReleaseAllSessionSetupsForFabric(fabricIndex);
 }
 
-CHIP_ERROR CASESessionManager::ResolveDeviceAddress(NodeId nodeId)
+void CASESessionManager::ReleaseAllSessions()
 {
-    return Dnssd::Resolver::Instance().ResolveNodeId(GetFabricInfo()->GetPeerIdForNode(nodeId), Inet::IPAddressType::kAny,
-                                                     Dnssd::Resolver::CacheBypass::On);
+    mConfig.sessionSetupPool->ReleaseAllSessionSetup();
 }
 
-void CASESessionManager::OnNodeIdResolved(const Dnssd::ResolvedNodeData & nodeData)
+CHIP_ERROR CASESessionManager::GetPeerAddress(const ScopedNodeId & peerId, Transport::PeerAddress & addr)
 {
-    ChipLogProgress(Controller, "Address resolved for node: 0x" ChipLogFormatX64, ChipLogValueX64(nodeData.mPeerId.GetNodeId()));
-
-    if (mConfig.dnsCache != nullptr)
-    {
-        LogErrorOnFailure(mConfig.dnsCache->Insert(nodeData));
-    }
-
-    OperationalDeviceProxy * session = FindExistingSession(nodeData.mPeerId.GetNodeId());
-    VerifyOrReturn(session != nullptr,
-                   ChipLogDetail(Controller, "OnNodeIdResolved was called for a device with no active sessions, ignoring it."));
-
-    LogErrorOnFailure(session->UpdateDeviceData(session->ToPeerAddress(nodeData), nodeData.GetMRPConfig()));
-}
-
-void CASESessionManager::OnNodeIdResolutionFailed(const PeerId & peer, CHIP_ERROR error)
-{
-    ChipLogError(Controller, "Error resolving node id: %s", ErrorStr(error));
-}
-
-CHIP_ERROR CASESessionManager::GetPeerAddress(NodeId nodeId, Transport::PeerAddress & addr)
-{
-    if (mConfig.dnsCache != nullptr)
-    {
-        Dnssd::ResolvedNodeData resolutionData;
-        ReturnErrorOnFailure(mConfig.dnsCache->Lookup(GetFabricInfo()->GetPeerIdForNode(nodeId), resolutionData));
-        addr = OperationalDeviceProxy::ToPeerAddress(resolutionData);
-        return CHIP_NO_ERROR;
-    }
-
-    OperationalDeviceProxy * session = FindExistingSession(nodeId);
-    VerifyOrReturnError(session != nullptr, CHIP_ERROR_NOT_CONNECTED);
-    addr = session->GetPeerAddress();
+    ReturnErrorOnFailure(mConfig.sessionInitParams.Validate());
+    auto optionalSessionHandle = FindExistingSession(peerId);
+    ReturnErrorCodeIf(!optionalSessionHandle.HasValue(), CHIP_ERROR_NOT_CONNECTED);
+    addr = optionalSessionHandle.Value()->AsSecureSession()->GetPeerAddress();
     return CHIP_NO_ERROR;
 }
 
-void CASESessionManager::OnSessionReleased(SessionHandle sessionHandle)
+void CASESessionManager::UpdatePeerAddress(ScopedNodeId peerId)
 {
-    OperationalDeviceProxy * session = FindSession(sessionHandle);
-    VerifyOrReturn(session != nullptr, ChipLogDetail(Controller, "OnSessionReleased was called for unknown device, ignoring it."));
+    bool forAddressUpdate             = true;
+    OperationalSessionSetup * session = FindExistingSessionSetup(peerId, forAddressUpdate);
+    if (session == nullptr)
+    {
+        ChipLogDetail(CASESessionManager, "UpdatePeerAddress: No existing OperationalSessionSetup instance found");
 
-    session->OnSessionReleased(sessionHandle);
-}
-
-OperationalDeviceProxy * CASESessionManager::FindSession(SessionHandle session)
-{
-    OperationalDeviceProxy * foundSession = nullptr;
-    mActiveSessions.ForEachActiveObject([&](auto * activeSession) {
-        if (activeSession->MatchesSession(session))
+        session = mConfig.sessionSetupPool->Allocate(mConfig.sessionInitParams, peerId, this);
+        if (session == nullptr)
         {
-            foundSession = activeSession;
-            return Loop::Break;
+            ChipLogDetail(CASESessionManager, "UpdatePeerAddress: Failed to allocate OperationalSessionSetup instance");
+            return;
         }
-        return Loop::Continue;
-    });
+    }
 
-    return foundSession;
+    session->PerformAddressUpdate();
 }
 
-OperationalDeviceProxy * CASESessionManager::FindExistingSession(NodeId id)
+OperationalSessionSetup * CASESessionManager::FindExistingSessionSetup(const ScopedNodeId & peerId, bool forAddressUpdate) const
 {
-    OperationalDeviceProxy * foundSession = nullptr;
-    mActiveSessions.ForEachActiveObject([&](auto * activeSession) {
-        if (activeSession->GetDeviceId() == id)
-        {
-            foundSession = activeSession;
-            return Loop::Break;
-        }
-        return Loop::Continue;
-    });
-
-    return foundSession;
+    return mConfig.sessionSetupPool->FindSessionSetup(peerId, forAddressUpdate);
 }
 
-void CASESessionManager::ReleaseSession(OperationalDeviceProxy * session)
+Optional<SessionHandle> CASESessionManager::FindExistingSession(const ScopedNodeId & peerId) const
+{
+    return mConfig.sessionInitParams.sessionManager->FindSecureSessionForNode(peerId,
+                                                                              MakeOptional(Transport::SecureSession::Type::kCASE));
+}
+
+void CASESessionManager::ReleaseSession(OperationalSessionSetup * session)
 {
     if (session != nullptr)
     {
-        mActiveSessions.ReleaseObject(session);
+        mConfig.sessionSetupPool->Release(session);
     }
 }
 

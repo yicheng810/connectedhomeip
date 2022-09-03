@@ -33,14 +33,16 @@
 #include <string.h>
 #include <type_traits>
 
+#include <lib/core/CHIPError.h>
 #include <lib/support/BitFlags.h>
 #include <lib/support/DLLUtil.h>
 
 #include <inet/InetConfig.h>
+#include <inet/InetError.h>
 
 #include "inet/IANAConstants.h"
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_SYSTEM_CONFIG_USE_LWIP && !CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 #include <lwip/init.h>
 #include <lwip/ip_addr.h>
 #if INET_CONFIG_ENABLE_IPV4
@@ -48,6 +50,11 @@
 #endif // INET_CONFIG_ENABLE_IPV4
 #include <lwip/inet.h>
 #endif // CHIP_SYSTEM_CONFIG_USE_LWIP
+
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
+#include <openthread/icmp6.h>
+#include <openthread/ip6.h>
+#endif // CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 
 #if CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_CONFIG_USE_NETWORK_FRAMEWORK
 #include <net/if.h>
@@ -58,26 +65,14 @@
 #include <sys/socket.h>
 #endif // CHIP_SYSTEM_CONFIG_USE_SOCKETS
 
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT && INET_CONFIG_ENABLE_IPV4
+#error Forbidden : native Open Thread implementation with IPV4 enabled
+#endif
+
+#include <inet/InetInterface.h>
+
 #define NL_INET_IPV6_ADDR_LEN_IN_BYTES (16)
 #define NL_INET_IPV6_MCAST_GROUP_LEN_IN_BYTES (14)
-
-/**
- * @brief   Adaptation for LwIP ip4_addr_t type.
- *
- * @details
- *  Before LwIP 2.0.0, the \c ip_addr_t type alias referred to a structure comprising
- *  an IPv4 address. At LwIP 2.0.0 and thereafter, this type alias is renamed \c ip4_addr_t
- *  and \c ip_addr_t is replaced with an alias to a union of both. Here, the \c ip4_addr_t
- *  type alias is provided even when the LwIP version is earlier than 2.0.0 so as to prepare
- *  for the import of the new logic.
- */
-#if CHIP_SYSTEM_CONFIG_USE_LWIP && INET_CONFIG_ENABLE_IPV4 && LWIP_VERSION_MAJOR < 2 && LWIP_VERSION_MINOR < 5
-typedef ip_addr_t ip4_addr_t;
-#endif // CHIP_SYSTEM_CONFIG_USE_LWIP && INET_CONFIG_ENABLE_IPV4 && LWIP_VERSION_MAJOR < 2 && LWIP_VERSION_MINOR < 5
-
-#if CHIP_SYSTEM_CONFIG_USE_LWIP && LWIP_VERSION_MAJOR == 1 && LWIP_VERSION_MINOR >= 5
-typedef u8_t lwip_ip_addr_type;
-#endif // CHIP_SYSTEM_CONFIG_USE_LWIP && LWIP_VERSION_MAJOR == 1 && LWIP_VERSION_MINOR >= 5
 
 namespace chip {
 namespace Inet {
@@ -127,6 +122,7 @@ union SockAddr
  * @details
  *  The CHIP Inet Layer uses objects of this class to represent Internet
  *  protocol addresses (independent of protocol version).
+ *
  */
 class DLL_EXPORT IPAddress
 {
@@ -134,18 +130,23 @@ public:
     /**
      * Maximum length of the string representation of an IP address, including a terminating NUL.
      */
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_SYSTEM_CONFIG_USE_LWIP && !CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
     static constexpr uint16_t kMaxStringLength = IP6ADDR_STRLEN_MAX;
 #endif // CHIP_SYSTEM_CONFIG_USE_LWIP
 #if CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_CONFIG_USE_NETWORK_FRAMEWORK
     static constexpr uint16_t kMaxStringLength = INET6_ADDRSTRLEN;
 #endif // CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_CONFIG_USE_NETWORK_FRAMEWORK
 
-public:
-    IPAddress()                        = default;
-    IPAddress(const IPAddress & other) = default;
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN OT_IP6_ADDRESS_STRING_SIZE
+#endif
+    static constexpr uint16_t kMaxStringLength = OT_IP6_ADDRESS_STRING_SIZE;
+#endif
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+    IPAddress() = default;
+
+#if CHIP_SYSTEM_CONFIG_USE_LWIP && !CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
     explicit IPAddress(const ip6_addr_t & ipv6Addr);
 #if INET_CONFIG_ENABLE_IPV4 || LWIP_IPV4
     explicit IPAddress(const ip4_addr_t & ipv4Addr);
@@ -159,6 +160,10 @@ public:
     explicit IPAddress(const struct in_addr & ipv4Addr);
 #endif // INET_CONFIG_ENABLE_IPV4
 #endif // CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_CONFIG_USE_NETWORK_FRAMEWORK
+
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
+    explicit IPAddress(const otIp6Address & ipv6Addr);
+#endif
 
     /**
      * @brief   Opaque word array to contain IP addresses (independent of protocol version)
@@ -322,15 +327,6 @@ public:
     bool operator!=(const IPAddress & other) const;
 
     /**
-     * @brief   Conventional assignment operator.
-     *
-     * @param[in]   other   The address to copy.
-     *
-     * @return  A reference to this object.
-     */
-    IPAddress & operator=(const IPAddress & other);
-
-    /**
      * @brief   Emit the IP address in conventional text presentation format.
      *
      * @param[out]  buf         The address of the emitted text.
@@ -391,6 +387,21 @@ public:
      * @retval false Otherwise
      */
     static bool FromString(const char * str, size_t strLen, IPAddress & output);
+
+    /**
+     * @brief
+     *   Scan the IP address from its conventional presentation text, including
+     *   the interface ID if present. (e.g. "fe80::2%wlan0"). If no interface ID
+     *   is present, then ifaceOutput will be set to the null interface ID.
+     *
+     * @param[in]    str          A pointer to the text to be scanned.
+     * @param[out]   addrOutput   The object to set to the IP address.
+     * @param[out]   ifaceOutput  The object to set to the interface ID.
+     *
+     * @retval true  The presentation format is valid
+     * @retval false Otherwise
+     */
+    static bool FromString(const char * str, IPAddress & addrOutput, class InterfaceId & ifaceOutput);
 
     /**
      * @brief   Emit the IP address in standard network representation.
@@ -487,9 +498,8 @@ public:
      *      either unspecified or not an IPv4 address.
      */
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_SYSTEM_CONFIG_USE_LWIP && !CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 
-#if LWIP_VERSION_MAJOR > 1 || LWIP_VERSION_MINOR >= 5
     /**
      * @fn      ToLwIPAddr() const
      *
@@ -504,14 +514,22 @@ public:
     ip_addr_t ToLwIPAddr(void) const;
 
     /**
+     * Extract the IP address as a LwIP ip_addr_t structure.
+     *
+     * If the IP address is Any, the result is IP6_ADDR_ANY unless the requested addressType is kIPv4.
+     * If the requested addressType is IPAddressType::kAny, extracts the IP address as an LwIP ip_addr_t structure.
+     * Otherwise, returns INET_ERROR_WRONG_ADDRESS_TYPE if the requested addressType does not match the IP address.
+     */
+    CHIP_ERROR ToLwIPAddr(IPAddressType addressType, ip_addr_t & outAddress) const;
+
+    /**
      * @brief   Convert the INET layer address type to its underlying LwIP type.
      *
      * @details
      *  Use <tt>ToLwIPAddrType(IPAddressType)</tt> to convert the IP address type
-     *  to its underlying LwIP address type code. (LWIP_VERSION_MAJOR > 1 only).
+     *  to its underlying LwIP address type code.
      */
     static lwip_ip_addr_type ToLwIPAddrType(IPAddressType);
-#endif // LWIP_VERSION_MAJOR > 1 || LWIP_VERSION_MINOR >= 5
 
     ip6_addr_t ToIPv6(void) const;
 
@@ -532,14 +550,22 @@ public:
     /**
      * Get the IP address from a SockAddr.
      */
-    static IPAddress FromSockAddr(const SockAddr & sockaddr);
-    static IPAddress FromSockAddr(const sockaddr & sockaddr) { return FromSockAddr(reinterpret_cast<const SockAddr &>(sockaddr)); }
+    static CHIP_ERROR GetIPAddressFromSockAddr(const SockAddr & sockaddr, IPAddress & outIPAddress);
+    static CHIP_ERROR GetIPAddressFromSockAddr(const sockaddr & sockaddr, IPAddress & outIPAddress)
+    {
+        return GetIPAddressFromSockAddr(reinterpret_cast<const SockAddr &>(sockaddr), outIPAddress);
+    }
     static IPAddress FromSockAddr(const sockaddr_in6 & sockaddr) { return IPAddress(sockaddr.sin6_addr); }
 #if INET_CONFIG_ENABLE_IPV4
     static IPAddress FromSockAddr(const sockaddr_in & sockaddr) { return IPAddress(sockaddr.sin_addr); }
 #endif // INET_CONFIG_ENABLE_IPV4
 
 #endif // CHIP_SYSTEM_CONFIG_USE_SOCKETS || CHIP_SYSTEM_USE_NETWORK_FRAMEWORK
+
+#if CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
+    otIp6Address ToIPv6() const;
+    static IPAddress FromOtAddr(const otIp6Address & address);
+#endif // CHIP_SYSTEM_CONFIG_USE_OPEN_THREAD_ENDPOINT
 
     /**
      * @brief   Construct an IPv6 unique-local address (ULA) from its parts.
@@ -648,6 +674,8 @@ public:
      */
     static IPAddress Any;
 };
+
+static_assert(std::is_trivial<IPAddress>::value, "IPAddress is not trivial");
 
 } // namespace Inet
 } // namespace chip

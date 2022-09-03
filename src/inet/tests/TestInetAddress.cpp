@@ -32,9 +32,7 @@
 #include <lwip/init.h>
 #include <lwip/ip_addr.h>
 
-#if LWIP_DONT_PROVIDE_BYTEORDER_FUNCTIONS
-#define htonl(x) lwip_htonl(x)
-#endif
+#include <inet/arpa-inet-compatibility.h>
 
 #else
 #include <netinet/in.h>
@@ -44,6 +42,7 @@
 #include <nlunit-test.h>
 
 #include <inet/IPPrefix.h>
+#include <inet/InetError.h>
 
 #include <lib/support/CodeUtils.h>
 #include <lib/support/UnitTestRegistration.h>
@@ -669,8 +668,8 @@ void CheckAddressQuartet(nlTestSuite * inSuite, const uint32_t & inFirstAddressQ
 
     if (!lResult)
     {
-        fprintf(stdout, "Address quartet %zu mismatch: actual 0x%08" PRIX32 ", expected: 0x%08" PRIX32 "\n", inWhich,
-                inFirstAddressQuartet, inSecondAddressQuartet);
+        fprintf(stdout, "Address quartet %u mismatch: actual 0x%08" PRIX32 ", expected: 0x%08" PRIX32 "\n",
+                static_cast<unsigned int>(inWhich), inFirstAddressQuartet, inSecondAddressQuartet);
     }
 }
 
@@ -1011,7 +1010,10 @@ void CheckToIPv6(nlTestSuite * inSuite, void * inContext)
 
 #if CHIP_SYSTEM_CONFIG_USE_LWIP
         ip6_addr_t ip_addr_1, ip_addr_2;
-        ip_addr_1 = *(ip6_addr_t *) addr;
+        memcpy(ip_addr_1.addr, addr, sizeof(addr));
+#if LWIP_IPV6_SCOPES
+        ip_addr_1.zone = 0;
+#endif
 #else
         struct in6_addr ip_addr_1, ip_addr_2;
         ip_addr_1 = *reinterpret_cast<struct in6_addr *>(addr);
@@ -1048,7 +1050,7 @@ void CheckFromIPv6(nlTestSuite * inSuite, void * inContext)
 
 #if CHIP_SYSTEM_CONFIG_USE_LWIP
         ip6_addr_t ip_addr;
-        ip_addr = *(ip6_addr_t *) addr;
+        memcpy(ip_addr.addr, addr, sizeof(addr));
 #else
         struct in6_addr ip_addr;
         ip_addr = *reinterpret_cast<struct in6_addr *>(addr);
@@ -1710,6 +1712,109 @@ void CheckIPPrefix(nlTestSuite * inSuite, void * inContext)
     }
 }
 
+#if CHIP_SYSTEM_CONFIG_USE_LWIP
+
+bool sameLwIPAddress(const ip6_addr_t & a, const ip6_addr_t & b)
+{
+    return (a.addr[0] == b.addr[0]) && (a.addr[1] == b.addr[1]) && (a.addr[2] == b.addr[2]) && (a.addr[3] == b.addr[3]);
+}
+
+#if LWIP_IPV4 && LWIP_IPV6
+bool sameLwIPAddress(const ip_addr_t & a, const ip_addr_t & b)
+{
+    switch (a.type)
+    {
+    case IPADDR_TYPE_V4:
+        return (b.type == IPADDR_TYPE_V4) && (a.u_addr.ip4.addr == b.u_addr.ip4.addr);
+    case IPADDR_TYPE_V6:
+        return (b.type == IPADDR_TYPE_V6) && sameLwIPAddress(a.u_addr.ip6, b.u_addr.ip6);
+    default:
+        return false;
+    }
+}
+#endif // LWIP_IPV4 && LWIP_IPV6
+
+/**
+ * Test ToLwIPAddress()
+ */
+void CheckToLwIPAddr(nlTestSuite * inSuite, void * inContext)
+{
+    const struct TestContext * lContext       = static_cast<const struct TestContext *>(inContext);
+    IPAddressExpandedContextIterator lCurrent = lContext->mIPAddressExpandedContextRange.mBegin;
+    IPAddressExpandedContextIterator lEnd     = lContext->mIPAddressExpandedContextRange.mEnd;
+    CHIP_ERROR err;
+    ip_addr_t lwip_expected_addr, lwip_check_addr;
+
+    while (lCurrent != lEnd)
+    {
+        IPAddress test_addr;
+
+        SetupIPAddress(test_addr, lCurrent);
+
+#if INET_CONFIG_ENABLE_IPV4
+        if (lCurrent->mAddr.mAddrType == IPAddressType::kIPv4)
+        {
+            ip_addr_copy_from_ip4(lwip_expected_addr, test_addr.ToIPv4());
+            lwip_check_addr = test_addr.ToLwIPAddr();
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kAny, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv4, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv6, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == INET_ERROR_WRONG_ADDRESS_TYPE);
+        }
+        else
+#endif // INET_CONFIG_ENABLE_IPV4
+            if (lCurrent->mAddr.mAddrType == IPAddressType::kIPv6)
+        {
+            ip_addr_copy_from_ip6(lwip_expected_addr, test_addr.ToIPv6());
+            lwip_check_addr = test_addr.ToLwIPAddr();
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kAny, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv6, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(lwip_expected_addr, lwip_check_addr));
+
+#if INET_CONFIG_ENABLE_IPV4
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv4, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == INET_ERROR_WRONG_ADDRESS_TYPE);
+#endif // INET_CONFIG_ENABLE_IPV4
+        }
+        else if (lCurrent->mAddr.mAddrType == IPAddressType::kAny)
+        {
+            lwip_check_addr = test_addr.ToLwIPAddr();
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(*IP6_ADDR_ANY, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kAny, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(*IP6_ADDR_ANY, lwip_check_addr));
+
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv6, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(*IP6_ADDR_ANY, lwip_check_addr));
+
+#if INET_CONFIG_ENABLE_IPV4
+            err = test_addr.ToLwIPAddr(IPAddressType::kIPv4, lwip_check_addr);
+            NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+            NL_TEST_ASSERT(inSuite, sameLwIPAddress(*IP4_ADDR_ANY, lwip_check_addr));
+#endif // INET_CONFIG_ENABLE_IPV4
+        }
+
+        ++lCurrent;
+    }
+}
+#endif // CHIP_SYSTEM_CONFIG_USE_LWIP
+
 /**
  *   Test Suite. It lists all the test functions.
  */
@@ -1750,6 +1855,9 @@ const nlTest sTests[] =
     NL_TEST_DEF("Assemble IPv6 Transient Multicast address",   CheckMakeIPv6TransientMulticast),
     NL_TEST_DEF("Assemble IPv6 Prefix Multicast address",      CheckMakeIPv6PrefixMulticast),
     NL_TEST_DEF("IPPrefix test",                               CheckIPPrefix),
+#if CHIP_SYSTEM_CONFIG_USE_LWIP
+    NL_TEST_DEF("Convert IPAddress to LwIP address",           CheckToLwIPAddr),
+#endif
     NL_TEST_SENTINEL()
 };
 // clang-format on

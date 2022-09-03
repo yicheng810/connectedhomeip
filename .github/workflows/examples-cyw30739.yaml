@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build example - CYW30739
+name: Build example - Infineon CYW30739
 
 on:
     push:
@@ -35,11 +35,18 @@ jobs:
             volumes:
                 - "/tmp/bloat_reports:/tmp/bloat_reports"
         steps:
-            - name: Checkout
-              uses: actions/checkout@v2
+            - uses: Wandalen/wretry.action@v1.0.15
+              name: Checkout
               with:
-                  submodules: true
-                  token: ${{ secrets.MATTER_TOKEN }}
+                  action: actions/checkout@v3
+                  with: |
+                      token: ${{ github.token }}
+                  attempt_limit: 3
+                  attempt_delay: 2000
+            - name: Checkout submodules
+              env:
+                  MATTER_TOKEN: ${{ secrets.MATTER_TOKEN }}
+              run: scripts/checkout_submodules.py --shallow --platform cyw30739
 
             - name: Set up environment for size reports
               if: ${{ !env.ACT }}
@@ -52,28 +59,46 @@ jobs:
               run: scripts/build/gn_bootstrap.sh
             - name: Uploading bootstrap logs
               uses: actions/upload-artifact@v2
-              if: ${{ always() }} && ${{ !env.ACT }}
+              if: ${{ always() && !env.ACT }}
               with:
                   name: bootstrap-logs
                   path: |
-                   .environment/gn_out/.ninja_log
-                   .environment/pigweed-venv/*.log
-            - name: Build example CYW30739 Lighting App
-              timeout-minutes: 10
+                      .environment/gn_out/.ninja_log
+                      .environment/pigweed-venv/*.log
+            - name: Build example CYW30739 Apps
+              timeout-minutes: 30
               run: |
-                  scripts/examples/gn_build_example.sh examples/lighting-app/cyw30739 out/lighting_app
-                  .environment/pigweed-venv/bin/python3 scripts/tools/memory/gh_sizes.py cyw30739 CYW30739 lighting-app \
-                    out/lighting_app/chip-cyw30739-lighting-example.elf /tmp/bloat_reports/
-            - name: Build example CYW30739 Lock App
-              timeout-minutes: 10
+                  ./scripts/run_in_build_env.sh \
+                    "./scripts/build/build_examples.py \
+                      --target-glob 'cyw30739-cyw930739m2evb_01-{light,lock,ota-requestor-no-progress-logging}' \
+                      build \
+                      --copy-artifacts-to out/artifacts \
+                    "
+            - name: Get light size stats
+              timeout-minutes: 5
               run: |
-                  scripts/examples/gn_build_example.sh examples/lock-app/cyw30739 out/lock_app
-                  .environment/pigweed-venv/bin/python3 scripts/tools/memory/gh_sizes.py cyw30739 CYW30739 lock-app \
-                    out/lock_app/chip-cyw30739-lock-example.elf /tmp/bloat_reports/
+                  .environment/pigweed-venv/bin/python3 scripts/tools/memory/gh_sizes.py \
+                    cyw30739 cyw930739m2evb_01 light \
+                    out/artifacts/cyw30739-cyw930739m2evb_01-light/chip-cyw30739-lighting-example.elf \
+                    /tmp/bloat_reports/
+            - name: Get lock size stats
+              timeout-minutes: 5
+              run: |
+                  .environment/pigweed-venv/bin/python3 scripts/tools/memory/gh_sizes.py \
+                    cyw30739 cyw930739m2evb_01 lock \
+                    out/artifacts/cyw30739-cyw930739m2evb_01-lock/chip-cyw30739-lock-example.elf \
+                    /tmp/bloat_reports/
+            - name: Get ota-requestor size stats
+              timeout-minutes: 5
+              run: |
+                  .environment/pigweed-venv/bin/python3 scripts/tools/memory/gh_sizes.py \
+                    cyw30739 cyw930739m2evb_01 ota-requestor-no-progress-logging \
+                    out/artifacts/cyw30739-cyw930739m2evb_01-ota-requestor-no-progress-logging/chip-cyw30739-ota-requestor-example.elf \
+                    /tmp/bloat_reports/
             - name: Uploading Size Reports
               uses: actions/upload-artifact@v2
               if: ${{ !env.ACT }}
               with:
-                  name: Size,CYW30739-Examples,${{ env.GH_EVENT_PR }},${{ env.GH_EVENT_HASH }},${{ env.GH_EVENT_PARENT }}
+                  name: Size,CYW30739-Examples,${{ env.GH_EVENT_PR }},${{ env.GH_EVENT_HASH }},${{ env.GH_EVENT_PARENT }},${{ github.event_name }}
                   path: |
                       /tmp/bloat_reports/

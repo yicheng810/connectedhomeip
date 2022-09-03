@@ -17,6 +17,7 @@
  */
 
 #include "PICSBooleanExpressionParser.h"
+#include "PICSNormalizer.h"
 
 #include <lib/support/CodeUtils.h>
 
@@ -115,17 +116,15 @@ bool PICSBooleanExpressionParser::EvaluateExpression(std::vector<std::string> & 
         bool rightExpr = EvaluateExpression(tokens, PICS, index);
         return leftExpr && rightExpr;
     }
-    else if (token == "||")
+    if (token == "||")
     {
         index++;
         bool rightExpr = EvaluateExpression(tokens, PICS, index);
         return leftExpr || rightExpr;
     }
-    else
-    {
-        ChipLogError(chipTool, "Unknown token: '%s'", token.c_str());
-        abort();
-    }
+
+    ChipLogError(chipTool, "Unknown token: '%s'", token.c_str());
+    chipDie();
 }
 
 bool PICSBooleanExpressionParser::EvaluateSubExpression(std::vector<std::string> & tokens, std::map<std::string, bool> & PICS,
@@ -139,29 +138,29 @@ bool PICSBooleanExpressionParser::EvaluateSubExpression(std::vector<std::string>
         if (tokens[index] != ")")
         {
             ChipLogError(chipTool, "Missing ')'");
-            abort();
+            chipDie();
         }
 
         index++;
         return expr;
     }
-    else if (token == "!")
+    if (token == "!")
     {
         index++;
         bool expr = EvaluateSubExpression(tokens, PICS, index);
         return !expr;
     }
-    else
+
+    token = PICSNormalizer::Normalize(token);
+
+    index++;
+
+    if (PICS.find(token) == PICS.end())
     {
-        index++;
-
-        if (PICS.find(token) == PICS.end())
-        {
-            // By default, let's consider that if a PICS item is not defined, it is |false|.
-            // It allows to create a file that only contains enabled features.
-            return false;
-        }
-
-        return PICS[token];
+        // By default, let's consider that if a PICS item is not defined, it is |false|.
+        // It allows to create a file that only contains enabled features.
+        return false;
     }
+
+    return PICS[token];
 }

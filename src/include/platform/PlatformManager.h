@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <platform/AttributeList.h>
 #include <platform/CHIPDeviceBuildConfig.h>
 #include <platform/CHIPDeviceEvent.h>
 #include <system/PlatformEventSupport.h>
@@ -36,17 +37,17 @@ class DiscoveryImplPlatform;
 
 namespace DeviceLayer {
 
+static constexpr size_t kMaxCalendarTypes = 12;
+
 class PlatformManagerImpl;
 class ConnectivityManagerImpl;
 class ConfigurationManagerImpl;
+class DeviceControlServer;
 class TraitManager;
 class ThreadStackManagerImpl;
 class TimeSyncManager;
 
 namespace Internal {
-class DeviceControlServer;
-class FabricProvisioningServer;
-class ServiceProvisioningServer;
 class BLEManagerImpl;
 template <class>
 class GenericConfigurationManagerImpl;
@@ -65,6 +66,28 @@ class GenericThreadStackManagerImpl_OpenThread;
 template <class>
 class GenericThreadStackManagerImpl_OpenThread_LwIP;
 } // namespace Internal
+
+/**
+ * Defines the delegate class of Platform Manager to notify platform updates.
+ */
+class PlatformManagerDelegate
+{
+public:
+    virtual ~PlatformManagerDelegate() {}
+
+    /**
+     * @brief
+     *   Called by the current Node after completing a boot or reboot process.
+     */
+    virtual void OnStartUp(uint32_t softwareVersion) {}
+
+    /**
+     * @brief
+     *   Called by the current Node prior to any orderly shutdown sequence on a
+     *   best-effort basis.
+     */
+    virtual void OnShutDown() {}
+};
 
 /**
  * Provides features for initializing and interacting with the chip network
@@ -88,6 +111,20 @@ public:
     CHIP_ERROR InitChipStack();
     CHIP_ERROR AddEventHandler(EventHandlerFunct handler, intptr_t arg = 0);
     void RemoveEventHandler(EventHandlerFunct handler, intptr_t arg = 0);
+    void SetDelegate(PlatformManagerDelegate * delegate) { mDelegate = delegate; }
+    PlatformManagerDelegate * GetDelegate() const { return mDelegate; }
+
+    /**
+     * Should be called after initializing all layers of the Matter stack to
+     * run all needed post-startup actions.
+     */
+    void HandleServerStarted();
+
+    /**
+     * Should be called before shutting down the Matter stack or restarting the
+     * application to run all needed pre-shutdown actions.
+     */
+    void HandleServerShuttingDown();
 
     /**
      * ScheduleWork can be called after InitChipStack has been called.  Calls
@@ -149,27 +186,36 @@ public:
     void LockChipStack();
     bool TryLockChipStack();
     void UnlockChipStack();
-    CHIP_ERROR Shutdown();
+    void Shutdown();
 
 #if CHIP_STACK_LOCK_TRACKING_ENABLED
     bool IsChipStackLockedByCurrentThread() const;
 #endif
 
+    /*
+     * PostEvent can be called safely on any thread without locking the stack.
+     * When called from a thread that is not doing the stack work item
+     * processing, the event might get dispatched (on the work item processing
+     * thread) before PostEvent returns.
+     */
+    [[nodiscard]] CHIP_ERROR PostEvent(const ChipDeviceEvent * event);
+    void PostEventOrDie(const ChipDeviceEvent * event);
+
 private:
-    bool mInitialized = false;
+    bool mInitialized                   = false;
+    PlatformManagerDelegate * mDelegate = nullptr;
 
     // ===== Members for internal use by the following friends.
 
     friend class PlatformManagerImpl;
     friend class ConnectivityManagerImpl;
     friend class ConfigurationManagerImpl;
+    friend class DeviceControlServer;
     friend class Dnssd::DiscoveryImplPlatform;
+    friend class FailSafeContext;
     friend class TraitManager;
     friend class ThreadStackManagerImpl;
     friend class TimeSyncManager;
-    friend class Internal::DeviceControlServer;
-    friend class Internal::FabricProvisioningServer;
-    friend class Internal::ServiceProvisioningServer;
     friend class Internal::BLEManagerImpl;
     template <class>
     friend class Internal::GenericPlatformManagerImpl;
@@ -189,14 +235,6 @@ private:
     friend class Internal::GenericConfigurationManagerImpl;
     friend class System::PlatformEventing;
 
-    /*
-     * PostEvent can be called safely on any thread without locking the stack.
-     * When called from a thread that is not doing the stack work item
-     * processing, the event might get dispatched (on the work item processing
-     * thread) before PostEvent returns.
-     */
-    [[nodiscard]] CHIP_ERROR PostEvent(const ChipDeviceEvent * event);
-    void PostEventOrDie(const ChipDeviceEvent * event);
     void DispatchEvent(const ChipDeviceEvent * event);
     CHIP_ERROR StartChipTimer(System::Clock::Timeout duration);
 
@@ -304,6 +342,16 @@ inline void PlatformManager::RemoveEventHandler(EventHandlerFunct handler, intpt
     static_cast<ImplClass *>(this)->_RemoveEventHandler(handler, arg);
 }
 
+inline void PlatformManager::HandleServerStarted()
+{
+    static_cast<ImplClass *>(this)->_HandleServerStarted();
+}
+
+inline void PlatformManager::HandleServerShuttingDown()
+{
+    static_cast<ImplClass *>(this)->_HandleServerShuttingDown();
+}
+
 inline void PlatformManager::ScheduleWork(AsyncWorkFunct workFunct, intptr_t arg)
 {
     static_cast<ImplClass *>(this)->_ScheduleWork(workFunct, arg);
@@ -351,12 +399,10 @@ inline CHIP_ERROR PlatformManager::StopEventLoopTask()
  *   This DOES NOT stop the chip thread or event queue from running.
  *
  */
-inline CHIP_ERROR PlatformManager::Shutdown()
+inline void PlatformManager::Shutdown()
 {
-    CHIP_ERROR err = static_cast<ImplClass *>(this)->_Shutdown();
-    if (err == CHIP_NO_ERROR)
-        mInitialized = false;
-    return err;
+    static_cast<ImplClass *>(this)->_Shutdown();
+    mInitialized = false;
 }
 
 inline void PlatformManager::LockChipStack()

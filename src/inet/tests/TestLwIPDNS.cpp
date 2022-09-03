@@ -39,7 +39,6 @@
 #include <CHIPVersion.h>
 
 #include <inet/InetArgParser.h>
-#include <inet/InetLayer.h>
 
 #include "TestInetCommon.h"
 #include "TestInetCommonOptions.h"
@@ -51,7 +50,7 @@ using namespace chip::Inet;
 
 #define TOOL_NAME "TestLwIPDNS"
 
-static bool HandleNonOptionArgs(const char * progName, int argc, char * argv[]);
+static bool HandleNonOptionArgs(const char * progName, int argc, char * const argv[]);
 
 // Globals
 
@@ -240,7 +239,7 @@ int main(int argc, char * argv[])
     return (EXIT_SUCCESS);
 }
 
-static bool HandleNonOptionArgs(const char * progName, int argc, char * argv[])
+static bool HandleNonOptionArgs(const char * progName, int argc, char * const argv[])
 {
     if (argc < 2)
     {

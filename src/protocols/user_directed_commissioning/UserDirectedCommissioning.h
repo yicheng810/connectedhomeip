@@ -18,7 +18,7 @@
 
 /**
  *    @file
- *      This file defines objects for a User-Directed Commissioning unsolicitied
+ *      This file defines objects for a User-Directed Commissioning unsolicited
  *      initiator (client) and recipient (server).
  *
  */
@@ -115,7 +115,7 @@ public:
      *
      */
 
-    CHIP_ERROR EncodeUDCMessage(System::PacketBufferHandle && payload);
+    CHIP_ERROR EncodeUDCMessage(const System::PacketBufferHandle & payload);
 };
 
 class DLL_EXPORT UserDirectedCommissioningServer : public TransportMgrDelegate

@@ -14,76 +14,41 @@ RUN set -x \
     && : # last line
 
 # ------------------------------------------------------------------------------
-# Install toolchain
+# Install dependencies
 RUN set -x \
     && apt-get update \
-    && apt-get install -fy --no-install-recommends obs-build=20180831-3ubuntu1 cpio=2.13+dfsg-2 \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -fy --no-install-recommends \
+    cpio \
+    obs-build \
+    openjdk-8-jre-headless \
+    wget \
+    zip \
+    # Cleanup
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists \
     && : # last line
 
 # ------------------------------------------------------------------------------
-# Install tizen SDK
-ENV TIZEN_HOME /opt/tizen_sdk
-ENV TIZEN_ROOTSTRAP_VERSION 6.0
-ENV TIZEN_ROOTSTRAPS mobile-$TIZEN_ROOTSTRAP_VERSION-rs-device.core_0.0.123_ubuntu-64
-ENV DNS_LIBS libnsd-dns-sd.so*
+# Install tizen
+ENV TIZEN_VERSION 6.0
+ENV TIZEN_SDK_ROOT /opt/tizen-sdk
 
-WORKDIR $TIZEN_HOME
-
+COPY tizen-sdk-installer /tmp/tizen-sdk-installer
 RUN set -x \
-    && wget --progress=dot:giga http://download.tizen.org/sdk/tizenstudio/official/binary/$TIZEN_ROOTSTRAPS.zip \
-    && unzip $TIZEN_ROOTSTRAPS.zip \
-    && mv data/platforms/tizen-$TIZEN_ROOTSTRAP_VERSION/mobile/rootstraps/mobile-$TIZEN_ROOTSTRAP_VERSION-device.core/usr . \
-    && mv data/platforms/tizen-$TIZEN_ROOTSTRAP_VERSION/mobile/rootstraps/mobile-$TIZEN_ROOTSTRAP_VERSION-device.core/lib . \
-    && rm -rf usr/lib/$DNS_LIBS \
-    && rm -rf data \
-    && rm -rf mobile-$TIZEN_ROOTSTRAP_VERSION-rs-device.* \
-    && rm pkginfo.manifest \
+    && bash /tmp/tizen-sdk-installer/install.sh \
+    --tizen-sdk-path $TIZEN_SDK_ROOT \
+    --tizen-sdk-data-path $USER_HOME/tizen-sdk-data \
+    --tizen-version $TIZEN_VERSION  \
+    --override-secret-tool \
+    # Cleanup
+    && rm -rf /tmp/tizen-sdk-installer \
     && : # last line
 
 # ------------------------------------------------------------------------------
-# Get tizen packages
-RUN set -x \
-    # Base packages
-    && wget -r -nd --no-parent -q -A 'pcre-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libffi-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libmount-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libblkid-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libcap-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'liblzma-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/ \
-    # Unified packages
-    && wget -r -nd --no-parent -q -A 'vconf-compat-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libcynara-commons-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'cynara-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libcynara-client-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'dbus-1*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'dbus-devel-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'dbus-libs-1*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'glib2-devel-2*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libdns_sd-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'buxton2-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libsystemd-*.armv7l.rpm' http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'capi-network-nsd-*.armv7l.rpm' http://download.tizen.org/snapshots/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && wget -r -nd --no-parent -q -A 'libnsd-dns-sd-*.armv7l.rpm' http://download.tizen.org/snapshots/tizen/unified/latest/repos/standard/packages/armv7l/ \
-    && unrpm ./*.rpm \
-    && cp usr/lib/pkgconfig/openssl1.1.pc usr/lib/pkgconfig/openssl.pc \
-    && rm usr/lib/libdns_sd.so \
-    && cp usr/lib/libdns_sd.so.878.* usr/lib/libdns_sd.so \
-    && rm ./*.rpm \
-    && : # last line
-
-# ------------------------------------------------------------------------------
-# Get toolchain
-RUN set -x \
-    && wget --progress=dot:giga http://download.tizen.org/sdk/tizenstudio/official/binary/cross-arm-gcc-9.2_0.1.9_ubuntu-64.zip \
-    && unzip cross-arm-gcc-9.2_0.1.9_ubuntu-64.zip \
-    && cp -rf data/tools/arm-linux-gnueabi-gcc-9.2/* . \
-    && rm pkginfo.manifest \
-    && rm changelog \
-    && rm -rf data \
-    && rm cross-arm-gcc-9.2_0.1.9_ubuntu-64.zip \
-    && : # last line
+# Set environment
+ENV TIZEN_SDK_TOOLCHAIN $TIZEN_SDK_ROOT/tools/arm-linux-gnueabi-gcc-9.2
+ENV TIZEN_SDK_SYSROOT $TIZEN_SDK_ROOT/platforms/tizen-$TIZEN_VERSION/mobile/rootstraps/mobile-$TIZEN_VERSION-device.core
+ENV PATH="$TIZEN_SDK_TOOLCHAIN/bin:$TIZEN_SDK_ROOT/tools/ide/bin:$TIZEN_SDK_ROOT/tools:$PATH"
 
 # ------------------------------------------------------------------------------
 # Switch to the non-root user

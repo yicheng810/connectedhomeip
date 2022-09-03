@@ -25,6 +25,7 @@
 
 #include <lib/core/CHIPCore.h>
 #include <lib/support/CodeUtils.h>
+#include <lib/support/UnitTestContext.h>
 #include <lib/support/UnitTestRegistration.h>
 #include <transport/TransportMgr.h>
 #include <transport/raw/UDP.h>
@@ -47,7 +48,6 @@ constexpr NodeId kDestinationNodeId = 111222333;
 constexpr uint32_t kMessageCounter  = 18;
 
 using TestContext = chip::Test::IOContext;
-TestContext sContext;
 
 const char PAYLOAD[]        = "Hello!";
 int ReceiveHandlerCallCount = 0;
@@ -90,7 +90,7 @@ void CheckSimpleInitTest(nlTestSuite * inSuite, void * inContext, Inet::IPAddres
 
     Transport::UDP udp;
 
-    CHIP_ERROR err = udp.Init(Transport::UdpListenParameters(&ctx.GetInetLayer()).SetAddressType(type).SetListenPort(0));
+    CHIP_ERROR err = udp.Init(Transport::UdpListenParameters(ctx.GetUDPEndPointManager()).SetAddressType(type).SetListenPort(0));
 
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 }
@@ -122,7 +122,7 @@ void CheckMessageTest(nlTestSuite * inSuite, void * inContext, const IPAddress &
 
     Transport::UDP udp;
 
-    err = udp.Init(Transport::UdpListenParameters(&ctx.GetInetLayer()).SetAddressType(addr.Type()).SetListenPort(0));
+    err = udp.Init(Transport::UdpListenParameters(ctx.GetUDPEndPointManager()).SetAddressType(addr.Type()).SetListenPort(0));
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     MockTransportMgrDelegate gMockTransportMgrDelegate(inSuite);
@@ -140,14 +140,6 @@ void CheckMessageTest(nlTestSuite * inSuite, void * inContext, const IPAddress &
 
     // Should be able to send a message to itself by just calling send.
     err = udp.SendMessage(Transport::PeerAddress::UDP(addr, udp.GetBoundPort()), std::move(buffer));
-    if (err == CHIP_ERROR_POSIX(EADDRNOTAVAIL))
-    {
-        // TODO(#2698): the underlying system does not support IPV6. This early return
-        // should be removed and error should be made fatal.
-        printf("%s:%u: System does NOT support IPV6.\n", __FILE__, __LINE__);
-        return;
-    }
-
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
 
     ctx.DriveIOUntil(chip::System::Clock::Seconds16(1), []() { return ReceiveHandlerCallCount != 0; });
@@ -213,16 +205,13 @@ static int Initialize(void * aContext)
  */
 static int Finalize(void * aContext)
 {
-    CHIP_ERROR err = reinterpret_cast<TestContext *>(aContext)->Shutdown();
-    return (err == CHIP_NO_ERROR) ? SUCCESS : FAILURE;
+    reinterpret_cast<TestContext *>(aContext)->Shutdown();
+    return SUCCESS;
 }
 
 int TestUDP()
 {
-    // Run test suit against one context
-    nlTestRunner(&sSuite, &sContext);
-
-    return (nlTestRunnerStats(&sSuite));
+    return chip::ExecuteTestsWithContext<TestContext>(&sSuite);
 }
 
 CHIP_REGISTER_TEST_SUITE(TestUDP);

@@ -25,6 +25,10 @@
 
 #include <platform/CHIPDeviceLayer.h>
 
+#if CONFIG_CHIP_FACTORY_DATA
+#include <platform/nrfconnect/FactoryDataProvider.h>
+#endif
+
 #ifdef CONFIG_MCUMGR_SMP_BT
 #include "DFUOverSMP.h"
 #endif
@@ -34,7 +38,7 @@ struct k_timer;
 class AppTask
 {
 public:
-    int StartApp();
+    CHIP_ERROR StartApp();
 
     void PostStartActionRequest(int32_t aActor, PumpManager::Action_t aAction);
     void PostEvent(AppEvent * event);
@@ -43,7 +47,7 @@ public:
 private:
     friend AppTask & GetAppTask(void);
 
-    int Init();
+    CHIP_ERROR Init();
 
     static void ActionInitiated(PumpManager::Action_t aAction, int32_t aActor);
     static void ActionCompleted(PumpManager::Action_t aAction, int32_t aActor);
@@ -57,7 +61,6 @@ private:
     static void UpdateLedStateEventHandler(AppEvent * aEvent);
     static void FunctionTimerEventHandler(AppEvent * aEvent);
     static void FunctionHandler(AppEvent * aEvent);
-    static void StartThreadHandler(AppEvent * aEvent);
     static void StartActionEventHandler(AppEvent * aEvent);
     static void StartBLEAdvertisementHandler(AppEvent * aEvent);
 
@@ -84,6 +87,10 @@ private:
     Function_t mFunction      = kFunction_NoneSelected;
     bool mFunctionTimerActive = false;
     static AppTask sAppTask;
+
+#if CONFIG_CHIP_FACTORY_DATA
+    chip::DeviceLayer::FactoryDataProvider<chip::DeviceLayer::InternalFlashFactoryData> mFactoryDataProvider;
+#endif
 };
 
 inline AppTask & GetAppTask(void)

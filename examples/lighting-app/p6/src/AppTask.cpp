@@ -38,8 +38,36 @@
 #include <setup_payload/QRCodeSetupPayloadGenerator.h>
 #include <setup_payload/SetupPayload.h>
 
-#define FACTORY_RESET_TRIGGER_TIMEOUT 3000
-#define FACTORY_RESET_CANCEL_WINDOW_TIMEOUT 3000
+#include <DeviceInfoProviderImpl.h>
+#include <app/clusters/network-commissioning/network-commissioning.h>
+#include <platform/P6/NetworkCommissioningDriver.h>
+
+/* OTA related includes */
+#if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
+#include <app/clusters/ota-requestor/BDXDownloader.h>
+#include <app/clusters/ota-requestor/DefaultOTARequestor.h>
+#include <app/clusters/ota-requestor/DefaultOTARequestorDriver.h>
+#include <app/clusters/ota-requestor/DefaultOTARequestorStorage.h>
+#include <platform/P6/OTAImageProcessorImpl.h>
+
+using chip::BDXDownloader;
+using chip::CharSpan;
+using chip::DefaultOTARequestor;
+using chip::FabricIndex;
+using chip::GetRequestorInstance;
+using chip::NodeId;
+using chip::OTADownloader;
+using chip::DeviceLayer::OTAImageProcessorImpl;
+using chip::System::Layer;
+
+using namespace ::chip;
+using namespace chip::TLV;
+using namespace ::chip::Credentials;
+using namespace ::chip::DeviceLayer;
+using namespace ::chip::System;
+
+#endif
+#define FACTORY_RESET_CANCEL_WINDOW_TIMEOUT 5000
 #define APP_TASK_STACK_SIZE (4096)
 #define APP_TASK_PRIORITY 2
 #define APP_EVENT_QUEUE_SIZE 10
@@ -63,13 +91,51 @@ StaticQueue_t sAppEventQueueStruct;
 
 StackType_t appStack[APP_TASK_STACK_SIZE / sizeof(StackType_t)];
 StaticTask_t appTaskStruct;
+
+#if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
+DefaultOTARequestor gRequestorCore;
+DefaultOTARequestorStorage gRequestorStorage;
+DefaultOTARequestorDriver gRequestorUser;
+BDXDownloader gDownloader;
+OTAImageProcessorImpl gImageProcessor;
+#endif
+
 } // namespace
 
+using namespace ::chip;
 using namespace chip::TLV;
 using namespace ::chip::Credentials;
 using namespace ::chip::DeviceLayer;
 
 AppTask AppTask::sAppTask;
+static chip::DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
+
+namespace {
+app::Clusters::NetworkCommissioning::Instance
+    sWiFiNetworkCommissioningInstance(0 /* Endpoint Id */, &(NetworkCommissioning::P6WiFiDriver::GetInstance()));
+} // namespace
+
+void NetWorkCommissioningInstInit()
+{
+    sWiFiNetworkCommissioningInstance.Init();
+}
+
+static void InitServer(intptr_t context)
+{
+    // Init ZCL Data Model
+    static chip::CommonCaseDeviceServerInitParams initParams;
+    (void) initParams.InitializeStaticResourcesBeforeServerInit();
+    chip::Server::GetInstance().Init(initParams);
+
+    gExampleDeviceInfoProvider.SetStorageDelegate(&Server::GetInstance().GetPersistentStorage());
+    chip::DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
+
+    // Initialize device attestation config
+    SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+#if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
+    GetAppTask().InitOTARequestor();
+#endif
+}
 
 CHIP_ERROR AppTask::StartAppTask()
 {
@@ -88,7 +154,14 @@ CHIP_ERROR AppTask::StartAppTask()
 CHIP_ERROR AppTask::Init()
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
-
+#if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
+    int rc = boot_set_confirmed();
+    if (rc != 0)
+    {
+        P6_LOG("boot_set_confirmed failed");
+        appError(CHIP_ERROR_WELL_UNINITIALIZED);
+    }
+#endif
     // Register the callback to init the MDNS server when connectivity is available
     PlatformMgr().AddEventHandler(
         [](const ChipDeviceEvent * event, intptr_t arg) {
@@ -103,11 +176,8 @@ CHIP_ERROR AppTask::Init()
             }
         },
         0);
-    // Init ZCL Data Model
-    chip::Server::GetInstance().Init();
 
-    // Initialize device attestation config
-    SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
 
     // Initialise WSTK buttons PB0 and PB1 (including debounce).
     ButtonHandler::Init();
@@ -124,8 +194,8 @@ CHIP_ERROR AppTask::Init()
         P6_LOG("funct timer create failed");
         appError(APP_ERROR_CREATE_TIMER_FAILED);
     }
-
-    P6_LOG("Current Firmware Version: %s", CHIP_DEVICE_CONFIG_DEVICE_FIRMWARE_REVISION_STRING);
+    NetWorkCommissioningInstInit();
+    P6_LOG("Current Firmware Version: %s", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING);
     err = LightMgr().Init();
     if (err != CHIP_NO_ERROR)
     {
@@ -139,7 +209,6 @@ CHIP_ERROR AppTask::Init()
     sStatusLED.Init(SYSTEM_STATE_LED);
     sLightLED.Init(LIGHT_LED);
     sLightLED.Set(LightMgr().IsLightOn());
-    UpdateClusterState();
 
     ConfigurationMgr().LogDeviceConfig();
 
@@ -164,11 +233,10 @@ void AppTask::AppTaskMain(void * pvParameter)
 
     while (true)
     {
-        BaseType_t eventReceived = xQueueReceive(sAppEventQueue, &event, pdMS_TO_TICKS(10));
-        while (eventReceived == pdTRUE)
+        BaseType_t eventReceived = xQueueReceive(sAppEventQueue, &event, portMAX_DELAY);
+        if (eventReceived == pdTRUE)
         {
             sAppTask.DispatchEvent(&event);
-            eventReceived = xQueueReceive(sAppEventQueue, &event, 0);
         }
 
         // Collect connectivity and configuration state from the CHIP stack. Because
@@ -218,19 +286,19 @@ void AppTask::AppTaskMain(void * pvParameter)
     }
 }
 
-void AppTask::LightActionEventHandler(AppEvent * aEvent)
+void AppTask::LightActionEventHandler(AppEvent * event)
 {
     bool initiated = false;
     LightingManager::Action_t action;
     int32_t actor  = 0;
     CHIP_ERROR err = CHIP_NO_ERROR;
 
-    if (aEvent->Type == AppEvent::kEventType_Light)
+    if (event->Type == AppEvent::kEventType_Light)
     {
-        action = static_cast<LightingManager::Action_t>(aEvent->LightEvent.Action);
-        actor  = aEvent->LightEvent.Actor;
+        action = static_cast<LightingManager::Action_t>(event->LightEvent.Action);
+        actor  = event->LightEvent.Actor;
     }
-    else if (aEvent->Type == AppEvent::kEventType_Button)
+    else if (event->Type == AppEvent::kEventType_Button)
     {
         if (LightMgr().IsLightOn())
         {
@@ -282,74 +350,50 @@ void AppTask::ButtonEventHandler(uint8_t btnIdx, uint8_t btnAction)
     }
 }
 
-void AppTask::TimerEventHandler(TimerHandle_t xTimer)
+void AppTask::TimerEventHandler(TimerHandle_t timer)
 {
     AppEvent event;
     event.Type               = AppEvent::kEventType_Timer;
-    event.TimerEvent.Context = (void *) xTimer;
+    event.TimerEvent.Context = (void *) timer;
     event.Handler            = FunctionTimerEventHandler;
     sAppTask.PostEvent(&event);
 }
 
-void AppTask::FunctionTimerEventHandler(AppEvent * aEvent)
+void AppTask::FunctionTimerEventHandler(AppEvent * event)
 {
-    if (aEvent->Type != AppEvent::kEventType_Timer)
+    if (event->Type != AppEvent::kEventType_Timer)
     {
         return;
     }
 
-    // If we reached here, the button was held past FACTORY_RESET_TRIGGER_TIMEOUT,
-    // initiate factory reset
-    if (sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kStartBleAdv)
-    {
-        P6_LOG("Factory Reset Triggered. Release button within %ums to cancel.", FACTORY_RESET_CANCEL_WINDOW_TIMEOUT);
-
-        // Start timer for FACTORY_RESET_CANCEL_WINDOW_TIMEOUT to allow user to
-        // cancel, if required.
-        sAppTask.StartTimer(FACTORY_RESET_CANCEL_WINDOW_TIMEOUT);
-
-        sAppTask.mFunction = Function::kFactoryReset;
-
-        // Turn off all LEDs before starting blink to make sure blink is
-        // co-ordinated.
-        sStatusLED.Set(false);
-        sLightLED.Set(false);
-
-        sStatusLED.Blink(500);
-        sLightLED.Blink(500);
-    }
-    else if (sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kFactoryReset)
+    if (sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kFactoryReset)
     {
         // Actually trigger Factory Reset
         sAppTask.mFunction = Function::kNoneSelected;
-        ConfigurationMgr().InitiateFactoryReset();
+        chip::Server::GetInstance().ScheduleFactoryReset();
     }
 }
 
-void AppTask::FunctionHandler(AppEvent * aEvent)
+void AppTask::FunctionHandler(AppEvent * event)
 {
-    // To trigger software update: press the APP_FUNCTION_BUTTON button briefly (<
-    // FACTORY_RESET_TRIGGER_TIMEOUT) To initiate factory reset: press the
-    // APP_FUNCTION_BUTTON for FACTORY_RESET_TRIGGER_TIMEOUT +
-    // FACTORY_RESET_CANCEL_WINDOW_TIMEOUT All LEDs start blinking after
-    // FACTORY_RESET_TRIGGER_TIMEOUT to signal factory reset has been initiated.
-    // To cancel factory reset: release the APP_FUNCTION_BUTTON once all LEDs
-    // start blinking within the FACTORY_RESET_CANCEL_WINDOW_TIMEOUT
-    if (aEvent->ButtonEvent.Action == APP_BUTTON_PRESSED)
+    if (event->ButtonEvent.Action == APP_BUTTON_PRESSED)
     {
         if (!sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kNoneSelected)
         {
-            sAppTask.StartTimer(FACTORY_RESET_TRIGGER_TIMEOUT);
-            sAppTask.mFunction = Function::kStartBleAdv;
-        }
-    }
-    else
-    {
-        // If the button was released before factory reset got initiated, start Thread Network
-        if (sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kStartBleAdv)
-        {
-            sAppTask.CancelTimer();
-            sAppTask.mFunction = Function::kNoneSelected;
+            P6_LOG("Factory Reset Triggered. Press button again within %us to cancel.", FACTORY_RESET_CANCEL_WINDOW_TIMEOUT / 1000);
+            // Start timer for FACTORY_RESET_CANCEL_WINDOW_TIMEOUT to allow user to
+            // cancel, if required.
+            sAppTask.StartTimer(FACTORY_RESET_CANCEL_WINDOW_TIMEOUT);
+
+            sAppTask.mFunction = Function::kFactoryReset;
+
+            // Turn off all LEDs before starting blink to make sure blink is
+            // co-ordinated.
+            sStatusLED.Set(false);
+            sLightLED.Set(false);
+
+            sStatusLED.Blink(500);
+            sLightLED.Blink(500);
         }
         else if (sAppTask.mFunctionTimerActive && sAppTask.mFunction == Function::kFactoryReset)
         {
@@ -398,56 +442,56 @@ void AppTask::StartTimer(uint32_t aTimeoutInMs)
     mFunctionTimerActive = true;
 }
 
-void AppTask::ActionInitiated(LightingManager::Action_t aAction, int32_t aActor)
+void AppTask::ActionInitiated(LightingManager::Action_t action, int32_t actor)
 {
     // Action initiated, update the light led
-    if (aAction == LightingManager::ON_ACTION)
+    if (action == LightingManager::ON_ACTION)
     {
         P6_LOG("Turning light ON");
         sLightLED.Set(true);
     }
-    else if (aAction == LightingManager::OFF_ACTION)
+    else if (action == LightingManager::OFF_ACTION)
     {
         P6_LOG("Turning light OFF");
         sLightLED.Set(false);
     }
 
-    if (aActor == AppEvent::kEventType_Button)
+    if (actor == AppEvent::kEventType_Button)
     {
         sAppTask.mSyncClusterToButtonAction = true;
     }
 }
 
-void AppTask::ActionCompleted(LightingManager::Action_t aAction)
+void AppTask::ActionCompleted(LightingManager::Action_t action)
 {
     // action has been completed bon the light
-    if (aAction == LightingManager::ON_ACTION)
+    if (action == LightingManager::ON_ACTION)
     {
         P6_LOG("Light ON");
     }
-    else if (aAction == LightingManager::OFF_ACTION)
+    else if (action == LightingManager::OFF_ACTION)
     {
         P6_LOG("Light OFF");
     }
 
     if (sAppTask.mSyncClusterToButtonAction)
     {
-        UpdateClusterState();
+        chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
         sAppTask.mSyncClusterToButtonAction = false;
     }
 }
 
-void AppTask::PostLightActionRequest(int32_t aActor, LightingManager::Action_t aAction)
+void AppTask::PostLightActionRequest(int32_t actor, LightingManager::Action_t action)
 {
     AppEvent event;
     event.Type              = AppEvent::kEventType_Light;
-    event.LightEvent.Actor  = aActor;
-    event.LightEvent.Action = aAction;
+    event.LightEvent.Actor  = actor;
+    event.LightEvent.Action = action;
     event.Handler           = LightActionEventHandler;
     PostEvent(&event);
 }
 
-void AppTask::PostEvent(const AppEvent * aEvent)
+void AppTask::PostEvent(const AppEvent * event)
 {
     if (sAppEventQueue != NULL)
     {
@@ -455,7 +499,7 @@ void AppTask::PostEvent(const AppEvent * aEvent)
         if (xPortIsInsideInterrupt())
         {
             BaseType_t higherPrioTaskWoken = pdFALSE;
-            status                         = xQueueSendFromISR(sAppEventQueue, aEvent, &higherPrioTaskWoken);
+            status                         = xQueueSendFromISR(sAppEventQueue, event, &higherPrioTaskWoken);
 
 #ifdef portYIELD_FROM_ISR
             portYIELD_FROM_ISR(higherPrioTaskWoken);
@@ -467,7 +511,7 @@ void AppTask::PostEvent(const AppEvent * aEvent)
         }
         else
         {
-            status = xQueueSend(sAppEventQueue, aEvent, 1);
+            status = xQueueSend(sAppEventQueue, event, 1);
         }
 
         if (!status)
@@ -479,11 +523,11 @@ void AppTask::PostEvent(const AppEvent * aEvent)
     }
 }
 
-void AppTask::DispatchEvent(AppEvent * aEvent)
+void AppTask::DispatchEvent(AppEvent * event)
 {
-    if (aEvent->Handler)
+    if (event->Handler)
     {
-        aEvent->Handler(aEvent);
+        event->Handler(event);
     }
     else
     {
@@ -491,15 +535,31 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
     }
 }
 
-void AppTask::UpdateClusterState(void)
+void AppTask::UpdateClusterState(intptr_t context)
 {
     uint8_t newValue = LightMgr().IsLightOn();
 
     // write the new on/off value
-    EmberAfStatus status = emberAfWriteAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
-                                                 (uint8_t *) &newValue, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+    EmberAfStatus status =
+        emberAfWriteAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, (uint8_t *) &newValue, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         P6_LOG("ERR: updating on/off %x", status);
     }
 }
+#if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
+void AppTask::InitOTARequestor()
+{
+    SetRequestorInstance(&gRequestorCore);
+    ConfigurationMgr().StoreSoftwareVersion(CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION);
+    gRequestorStorage.Init(chip::Server::GetInstance().GetPersistentStorage());
+    gRequestorCore.Init(chip::Server::GetInstance(), gRequestorStorage, gRequestorUser, gDownloader);
+    gImageProcessor.SetOTADownloader(&gDownloader);
+    gDownloader.SetImageProcessorDelegate(&gImageProcessor);
+
+    gRequestorUser.Init(&gRequestorCore, &gImageProcessor);
+
+    P6_LOG("Current Software Version: %u", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION);
+    P6_LOG("Current Software Version String: %s", CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION_STRING);
+}
+#endif

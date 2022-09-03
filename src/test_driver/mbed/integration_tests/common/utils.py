@@ -258,14 +258,14 @@ def commissioning_wifi(devCtrl, ssid, password, nodeId):
 
     # Inject the credentials to the device
     err, res = send_zcl_command(
-        devCtrl, "NetworkCommissioning AddWiFiNetwork {} 0 0 ssid=str:{} credentials=str:{} breadcrumb=0 timeoutMs=1000".format(nodeId, ssid, password))
+        devCtrl, "NetworkCommissioning AddOrUpdateWiFiNetwork {} 0 0 ssid=str:{} credentials=str:{} breadcrumb=0 timeoutMs=1000".format(nodeId, ssid, password))
     if err != 0 and res["Status"] != 0:
         log.error("Set Wi-Fi credentials failed [{}]".format(err))
         return err
 
     # Enable the Wi-Fi interface
     err, res = send_zcl_command(
-        devCtrl, "NetworkCommissioning EnableNetwork {} 0 0 networkID=str:{} breadcrumb=0 timeoutMs=1000".format(nodeId, ssid))
+        devCtrl, "NetworkCommissioning ConnectNetwork {} 0 0 networkID=str:{} breadcrumb=0 timeoutMs=1000".format(nodeId, ssid))
     if err != 0 and res["Status"] != 0:
         log.error("Enable Wi-Fi failed [{}]".format(err))
         return err
@@ -282,13 +282,10 @@ def resolve_device(devCtrl, nodeId):
     """
     ret = None
     try:
-        err = devCtrl.ResolveNode(int(nodeId))
-        if err == 0:
-            ret = devCtrl.GetAddressAndPort(int(nodeId))
-            if ret == None:
-                log.error("Get address and port failed")
-        else:
-            log.error("Resolve node failed [{}]".format(err))
+        devCtrl.ResolveNode(int(nodeId))
+        ret = devCtrl.GetAddressAndPort(int(nodeId))
+        if ret == None:
+            log.error("Get address and port failed")
     except exceptions.ChipStackException as ex:
         log.error("Resolve node failed {}".format(str(ex)))
 

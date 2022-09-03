@@ -24,7 +24,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include <app/AppBuildConfig.h>
+#include <app/AppConfig.h>
 
 namespace chip {
 namespace app {
@@ -43,7 +43,7 @@ CHIP_ERROR EventPathIBs::Parser::CheckSchemaValidity() const
 
     while (CHIP_NO_ERROR == (err = reader.Next()))
     {
-        VerifyOrReturnError(TLV::AnonymousTag == reader.GetTag(), CHIP_ERROR_INVALID_TLV_TAG);
+        VerifyOrReturnError(TLV::AnonymousTag() == reader.GetTag(), CHIP_ERROR_INVALID_TLV_TAG);
         VerifyOrReturnError(TLV::kTLVType_List == reader.GetType(), CHIP_ERROR_WRONG_TLV_TYPE);
 
         {
@@ -59,7 +59,7 @@ CHIP_ERROR EventPathIBs::Parser::CheckSchemaValidity() const
     }
 
     PRETTY_PRINT("],");
-    PRETTY_PRINT("");
+    PRETTY_PRINT_BLANK_LINE();
 
     // if we have exhausted this container
     if (CHIP_END_OF_TLV == err)
@@ -67,8 +67,7 @@ CHIP_ERROR EventPathIBs::Parser::CheckSchemaValidity() const
         err = CHIP_NO_ERROR;
     }
     ReturnErrorOnFailure(err);
-    ReturnErrorOnFailure(reader.ExitContainer(mOuterContainerType));
-    return CHIP_NO_ERROR;
+    return reader.ExitContainer(mOuterContainerType);
 }
 #endif // CHIP_CONFIG_IM_ENABLE_SCHEMA_CHECK
 

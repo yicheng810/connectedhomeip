@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2021 Project CHIP Authors
+ *    Copyright (c) 2021-2022 Project CHIP Authors
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,16 +18,19 @@
 
 #pragma once
 
-#include <app/ClusterInfo.h>
+#include <access/SubjectDescriptor.h>
 #include <app/ConcreteAttributePath.h>
 #include <app/MessageDef/AttributeReportIBs.h>
+#include <app/data-model/DecodableList.h>
 #include <app/data-model/Decode.h>
 #include <app/data-model/Encode.h>
+#include <app/data-model/FabricScoped.h>
 #include <app/data-model/List.h> // So we can encode lists
 #include <app/data-model/TagBoundEncoder.h>
 #include <app/util/basic-types.h>
 #include <lib/core/CHIPTLV.h>
 #include <lib/core/Optional.h>
+#include <lib/support/logging/CHIPLogging.h>
 
 /**
  * Callback class that clusters can implement in order to interpose custom
@@ -73,11 +76,19 @@ public:
     /**
      * EncodeValue encodes the value field of the report, it should be called exactly once.
      */
-    template <typename... Ts>
-    CHIP_ERROR EncodeValue(AttributeReportIBs::Builder & aAttributeReportIBs, Ts... aArgs)
+    template <typename T, std::enable_if_t<!DataModel::IsFabricScoped<T>::value, bool> = true, typename... Ts>
+    CHIP_ERROR EncodeValue(AttributeReportIBs::Builder & aAttributeReportIBs, T && item, Ts &&... aArgs)
     {
         return DataModel::Encode(*(aAttributeReportIBs.GetAttributeReport().GetAttributeData().GetWriter()),
-                                 TLV::ContextTag(to_underlying(AttributeDataIB::Tag::kData)), std::forward<Ts>(aArgs)...);
+                                 TLV::ContextTag(to_underlying(AttributeDataIB::Tag::kData)), item, std::forward<Ts>(aArgs)...);
+    }
+
+    template <typename T, std::enable_if_t<DataModel::IsFabricScoped<T>::value, bool> = true, typename... Ts>
+    CHIP_ERROR EncodeValue(AttributeReportIBs::Builder & aAttributeReportIBs, FabricIndex accessingFabricIndex, T && item,
+                           Ts &&... aArgs)
+    {
+        return DataModel::EncodeForRead(*(aAttributeReportIBs.GetAttributeReport().GetAttributeData().GetWriter()),
+                                        TLV::ContextTag(to_underlying(AttributeDataIB::Tag::kData)), accessingFabricIndex, item);
     }
 };
 
@@ -97,10 +108,23 @@ public:
     public:
         ListEncodeHelper(AttributeValueEncoder & encoder) : mAttributeValueEncoder(encoder) {}
 
-        template <typename... Ts>
-        CHIP_ERROR Encode(Ts... aArgs) const
+        template <typename T, std::enable_if_t<DataModel::IsFabricScoped<T>::value, bool> = true>
+        CHIP_ERROR Encode(T && aArg) const
         {
-            return mAttributeValueEncoder.EncodeListItem(std::forward<Ts>(aArgs)...);
+            VerifyOrReturnError(aArg.GetFabricIndex() != kUndefinedFabricIndex, CHIP_ERROR_INVALID_FABRIC_INDEX);
+
+            // If we are encoding for a fabric filtered attribute read and the fabric index does not match that present in the
+            // request, skip encoding this list item.
+            VerifyOrReturnError(!mAttributeValueEncoder.mIsFabricFiltered ||
+                                    aArg.GetFabricIndex() == mAttributeValueEncoder.mAccessingFabricIndex,
+                                CHIP_NO_ERROR);
+            return mAttributeValueEncoder.EncodeListItem(mAttributeValueEncoder.mAccessingFabricIndex, std::forward<T>(aArg));
+        }
+
+        template <typename T, std::enable_if_t<!DataModel::IsFabricScoped<T>::value, bool> = true>
+        CHIP_ERROR Encode(T && aArg) const
+        {
+            return mAttributeValueEncoder.EncodeListItem(std::forward<T>(aArg));
         }
 
     private:
@@ -139,23 +163,41 @@ public:
     };
 
     AttributeValueEncoder(AttributeReportIBs::Builder & aAttributeReportIBsBuilder, FabricIndex aAccessingFabricIndex,
-                          const ConcreteAttributePath & aPath, DataVersion aDataVersion,
+                          const ConcreteAttributePath & aPath, DataVersion aDataVersion, bool aIsFabricFiltered = false,
                           const AttributeEncodeState & aState = AttributeEncodeState()) :
         mAttributeReportIBsBuilder(aAttributeReportIBsBuilder),
         mAccessingFabricIndex(aAccessingFabricIndex), mPath(aPath.mEndpointId, aPath.mClusterId, aPath.mAttributeId),
-        mDataVersion(aDataVersion), mEncodeState(aState)
+        mDataVersion(aDataVersion), mIsFabricFiltered(aIsFabricFiltered), mEncodeState(aState)
     {}
 
     /**
-     * Encode builds a single AttributeReportIB in AttributeReportIBs.
-     * When we are encoding a single element in the list, the actual path in the report contains a null list index as "append"
-     * operation.
+     * Encode a single value.  This value will not be chunked; it will either be
+     * entirely encoded or fail to be encoded.  Consumers are allowed to make
+     * either one call to Encode or one call to EncodeList to handle a read.
      */
     template <typename... Ts>
-    CHIP_ERROR Encode(Ts... aArgs)
+    CHIP_ERROR Encode(Ts &&... aArgs)
     {
         mTriedEncode = true;
         return EncodeAttributeReportIB(std::forward<Ts>(aArgs)...);
+    }
+
+    /**
+     * Encode an explicit null value.
+     */
+    CHIP_ERROR EncodeNull()
+    {
+        // Doesn't matter what type Nullable we use here.
+        return Encode(DataModel::Nullable<uint8_t>());
+    }
+
+    /**
+     * Encode an explicit empty list.
+     */
+    CHIP_ERROR EncodeEmptyList()
+    {
+        // Doesn't matter what type List we use here.
+        return Encode(DataModel::List<uint8_t>());
     }
 
     /**
@@ -181,11 +223,7 @@ public:
         // EmptyList acts as the beginning of the whole array type attribute report.
         // An empty list is encoded iff both mCurrentEncodingListIndex and mEncodeState.mCurrentEncodingListIndex are invalid
         // values. After encoding the empty list, mEncodeState.mCurrentEncodingListIndex and mCurrentEncodingListIndex are set to 0.
-        mPath.mListOp = ConcreteDataAttributePath::ListOperation::ReplaceAll;
-        ReturnErrorOnFailure(EncodeEmptyList());
-        // For all elements in the list, a report with append operation will be generated. This will not be changed during encoding
-        // of each report since the users cannot access mPath.
-        mPath.mListOp = ConcreteDataAttributePath::ListOperation::AppendItem;
+        ReturnErrorOnFailure(EnsureListStarted());
         ReturnErrorOnFailure(aCallback(ListEncodeHelper(*this)));
         // The Encode procedure finished without any error, clear the state.
         mEncodeState = AttributeEncodeState();
@@ -209,9 +247,9 @@ private:
     friend class ListEncodeHelper;
 
     template <typename... Ts>
-    CHIP_ERROR EncodeListItem(Ts... aArgs)
+    CHIP_ERROR EncodeListItem(Ts &&... aArgs)
     {
-        // EncodeListItem must be called after EncodeEmptyList(), thus mCurrentEncodingListIndex and
+        // EncodeListItem must be called after EnsureListStarted(), thus mCurrentEncodingListIndex and
         // mEncodeState.mCurrentEncodingListIndex are not invalid values.
         if (mCurrentEncodingListIndex < mEncodeState.mCurrentEncodingListIndex)
         {
@@ -226,7 +264,7 @@ private:
         CHIP_ERROR err = EncodeAttributeReportIB(std::forward<Ts>(aArgs)...);
         if (err != CHIP_NO_ERROR)
         {
-            // For list chunking, ReportEngine should not rollback the buffer when CHIP_NO_MEMORY or similar error occurred.
+            // For list chunking, ReportEngine should not rollback the buffer when CHIP_ERROR_NO_MEMORY or similar error occurred.
             // However, the error might be raised in the middle of encoding procedure, then the buffer may contain partial data,
             // unclosed containers etc. This line clears all possible partial data and makes EncodeListItem is atomic.
             mAttributeReportIBsBuilder.Rollback(backup);
@@ -239,12 +277,16 @@ private:
     }
 
     /**
-     * Actual logic for encoding a single AttributeReportIB in AttributeReportIBs.
+     * Builds a single AttributeReportIB in AttributeReportIBs.  The caller is
+     * responsible for setting up mPath correctly.
+     *
+     * In particular, when we are encoding a single element in the list, mPath
+     * must indicate a null list index to represent an "append" operation.
+     * operation.
      */
     template <typename... Ts>
-    CHIP_ERROR EncodeAttributeReportIB(Ts... aArgs)
+    CHIP_ERROR EncodeAttributeReportIB(Ts &&... aArgs)
     {
-        mTriedEncode = true;
         AttributeReportBuilder builder;
 
         ReturnErrorOnFailure(builder.PrepareAttribute(mAttributeReportIBsBuilder, mPath, mDataVersion));
@@ -254,18 +296,24 @@ private:
     }
 
     /**
-     * EncodeEmptyList encodes the first item of one report with lists (an empty list).
+     * EnsureListStarted encodes the first item of one report with lists (an
+     * empty list), as needed.
      *
      * If internal state indicates we have already encoded the empty list, this function will encode nothing, set
      * mCurrentEncodingListIndex to 0 and return CHIP_NO_ERROR.
+     *
+     * In all cases this function guarantees that mPath.mListOp is AppendItem
+     * after it returns, because at that point we will be encoding the list
+     * items.
      */
-    CHIP_ERROR EncodeEmptyList();
+    CHIP_ERROR EnsureListStarted();
 
     bool mTriedEncode = false;
     AttributeReportIBs::Builder & mAttributeReportIBsBuilder;
     const FabricIndex mAccessingFabricIndex;
     ConcreteDataAttributePath mPath;
     DataVersion mDataVersion;
+    bool mIsFabricFiltered = false;
     AttributeEncodeState mEncodeState;
     ListIndex mCurrentEncodingListIndex = kInvalidListIndex;
 };
@@ -273,15 +321,27 @@ private:
 class AttributeValueDecoder
 {
 public:
-    AttributeValueDecoder(TLV::TLVReader & aReader, FabricIndex aAccessingFabricIndex) :
-        mReader(aReader), mAccessingFabricIndex(aAccessingFabricIndex)
+    AttributeValueDecoder(TLV::TLVReader & aReader, const Access::SubjectDescriptor & aSubjectDescriptor) :
+        mReader(aReader), mSubjectDescriptor(aSubjectDescriptor)
     {}
 
-    template <typename T>
+    template <typename T, typename std::enable_if_t<!DataModel::IsFabricScoped<T>::value, bool> = true>
     CHIP_ERROR Decode(T & aArg)
     {
         mTriedDecode = true;
         return DataModel::Decode(mReader, aArg);
+    }
+
+    template <typename T, typename std::enable_if_t<DataModel::IsFabricScoped<T>::value, bool> = true>
+    CHIP_ERROR Decode(T & aArg)
+    {
+        mTriedDecode = true;
+        // The WriteRequest comes with no fabric index, this will happen when receiving a write request on a PASE session before
+        // AddNOC.
+        VerifyOrReturnError(AccessingFabricIndex() != kUndefinedFabricIndex, CHIP_IM_GLOBAL_STATUS(UnsupportedAccess));
+        ReturnErrorOnFailure(DataModel::Decode(mReader, aArg));
+        aArg.SetFabricIndex(AccessingFabricIndex());
+        return CHIP_NO_ERROR;
     }
 
     bool TriedDecode() const { return mTriedDecode; }
@@ -289,12 +349,17 @@ public:
     /**
      * The accessing fabric index for this write interaction.
      */
-    FabricIndex AccessingFabricIndex() const { return mAccessingFabricIndex; }
+    FabricIndex AccessingFabricIndex() const { return mSubjectDescriptor.fabricIndex; }
+
+    /**
+     * The accessing subject descriptor for this write interaction.
+     */
+    const Access::SubjectDescriptor & GetSubjectDescriptor() const { return mSubjectDescriptor; }
 
 private:
     TLV::TLVReader & mReader;
     bool mTriedDecode = false;
-    const FabricIndex mAccessingFabricIndex;
+    const Access::SubjectDescriptor mSubjectDescriptor;
 };
 
 class AttributeAccessInterface
@@ -314,12 +379,18 @@ public:
      *
      * @param [in] aPath indicates which exact data is being read.
      * @param [in] aEncoder the AttributeValueEncoder to use for encoding the
-     *             data.  If this function returns scucess and no attempt is
-     *             made to encode data using aEncoder, the
-     *             AttributeAccessInterface did not try to provide any data.  In
-     *             this case, normal attribute access will happen for the read.
-     *             This may involve reading from the attribute store or external
-     *             attribute callbacks.
+     *             data.
+     *
+     * The implementation can do one of three things:
+     *
+     * 1) Return a failure.  This is treated as a failed read and the error is
+     *    returned to the client, by converting it to a StatusIB.
+     * 2) Return success and attempt to encode data using aEncoder.  The data is
+     *    returned to the client.
+     * 3) Return success and not attempt to encode any data using aEncoder.  In
+     *    this case, Ember attribute access will happen for the read. This may
+     *    involve reading from the attribute store or external attribute
+     *    callbacks.
      */
     virtual CHIP_ERROR Read(const ConcreteReadAttributePath & aPath, AttributeValueEncoder & aEncoder) = 0;
 
@@ -328,14 +399,47 @@ public:
      *
      * @param [in] aPath indicates which exact data is being written.
      * @param [in] aDecoder the AttributeValueDecoder to use for decoding the
-     *             data.  If this function returns scucess and no attempt is
-     *             made to decode data using aDecoder, the
-     *             AttributeAccessInterface did not try to write any data.  In
-     *             this case, normal attribute access will happen for the write.
-     *             This may involve writing to the attribute store or external
-     *             attribute callbacks.
+     *             data.
+     *
+     * The implementation can do one of three things:
+     *
+     * 1) Return a failure.  This is treated as a failed write and the error is
+     *    sent to the client, by converting it to a StatusIB.
+     * 2) Return success and attempt to decode from aDecoder.  This is
+     *    treated as a successful write.
+     * 3) Return success and not attempt to decode from aDecoder.  In
+     *    this case, Ember attribute access will happen for the write. This may
+     *    involve writing to the attribute store or external attribute
+     *    callbacks.
      */
     virtual CHIP_ERROR Write(const ConcreteDataAttributePath & aPath, AttributeValueDecoder & aDecoder) { return CHIP_NO_ERROR; }
+
+    /**
+     * Indicates the start of a series of list operations. This function will be called before the first Write operation of a series
+     * of consequence attribute data of the same attribute.
+     *
+     * 1) This function will be called if the client tries to set a nullable list attribute to null.
+     * 2) This function will only be called once for a series of consequent attribute data (regardless the kind of list operation)
+     * of the same attribute.
+     *
+     * @param [in] aPath indicates the path of the modified list.
+     */
+    virtual void OnListWriteBegin(const ConcreteAttributePath & aPath) {}
+
+    /**
+     * Indicates the end of a series of list operations. This function will be called after the last Write operation of a series
+     * of consequence attribute data of the same attribute.
+     *
+     * 1) This function will be called if the client tries to set a nullable list attribute to null.
+     * 2) This function will only be called once for a series of consequent attribute data (regardless the kind of list operation)
+     * of the same attribute.
+     * 3) When aWriteWasSuccessful is true, the data written must be consistent or the list is untouched.
+     *
+     * @param [in] aPath indicates the path of the modified list
+     * @param [in] aWriteWasSuccessful indicates whether the delivered list is complete.
+     *
+     */
+    virtual void OnListWriteEnd(const ConcreteAttributePath & aPath, bool aWriteWasSuccessful) {}
 
     /**
      * Mechanism for keeping track of a chain of AttributeAccessInterfaces.

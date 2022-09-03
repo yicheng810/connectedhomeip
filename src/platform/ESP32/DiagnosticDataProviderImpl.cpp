@@ -165,30 +165,30 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetTotalOperationalHours(uint32_t & total
     return CHIP_ERROR_INVALID_TIME;
 }
 
-CHIP_ERROR DiagnosticDataProviderImpl::GetBootReason(uint8_t & bootReason)
+CHIP_ERROR DiagnosticDataProviderImpl::GetBootReason(BootReasonType & bootReason)
 {
-    bootReason = EMBER_ZCL_BOOT_REASON_TYPE_UNSPECIFIED;
+    bootReason = BootReasonType::kUnspecified;
     uint8_t reason;
     reason = static_cast<uint8_t>(esp_reset_reason());
     if (reason == ESP_RST_UNKNOWN)
     {
-        bootReason = EMBER_ZCL_BOOT_REASON_TYPE_UNSPECIFIED;
+        bootReason = BootReasonType::kUnspecified;
     }
     else if (reason == ESP_RST_POWERON)
     {
-        bootReason = EMBER_ZCL_BOOT_REASON_TYPE_POWER_ON_REBOOT;
+        bootReason = BootReasonType::kPowerOnReboot;
     }
     else if (reason == ESP_RST_BROWNOUT)
     {
-        bootReason = EMBER_ZCL_BOOT_REASON_TYPE_BROWN_OUT_RESET;
+        bootReason = BootReasonType::kBrownOutReset;
     }
     else if (reason == ESP_RST_SW)
     {
-        bootReason = EMBER_ZCL_BOOT_REASON_TYPE_SOFTWARE_RESET;
+        bootReason = BootReasonType::kSoftwareReset;
     }
     else if (reason == ESP_RST_INT_WDT)
     {
-        bootReason = EMBER_ZCL_BOOT_REASON_TYPE_SOFTWARE_WATCHDOG_RESET;
+        bootReason = BootReasonType::kSoftwareWatchdogReset;
         /* Reboot can be due to hardware or software watchdog*/
     }
     return CHIP_NO_ERROR;
@@ -198,6 +198,8 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetNetworkInterfaces(NetworkInterface ** 
 {
     esp_netif_t * netif     = esp_netif_next(NULL);
     NetworkInterface * head = NULL;
+    uint8_t ipv6_addr_count = 0;
+    esp_ip6_addr_t ip6_addr[kMaxIPv6AddrCount];
     if (netif == NULL)
     {
         ChipLogError(DeviceLayer, "Failed to get network interfaces");
@@ -207,13 +209,14 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetNetworkInterfaces(NetworkInterface ** 
         for (esp_netif_t * ifa = netif; ifa != NULL; ifa = esp_netif_next(ifa))
         {
             NetworkInterface * ifp = new NetworkInterface();
+            esp_netif_ip_info_t ipv4_info;
             strncpy(ifp->Name, esp_netif_get_ifkey(ifa), Inet::InterfaceId::kMaxIfNameLength);
             ifp->Name[Inet::InterfaceId::kMaxIfNameLength - 1] = '\0';
-            ifp->name                                          = CharSpan(ifp->Name, strlen(ifp->Name));
-            ifp->fabricConnected                               = true;
+            ifp->name                                          = CharSpan::fromCharString(ifp->Name);
+            ifp->isOperational                                 = true;
             ifp->type                                          = GetInterfaceType(esp_netif_get_desc(ifa));
-            ifp->offPremiseServicesReachableIPv4               = false;
-            ifp->offPremiseServicesReachableIPv6               = false;
+            ifp->offPremiseServicesReachableIPv4.SetNull();
+            ifp->offPremiseServicesReachableIPv6.SetNull();
             if (esp_netif_get_mac(ifa, ifp->MacAddress) != ESP_OK)
             {
                 ChipLogError(DeviceLayer, "Failed to get network hardware address");
@@ -222,6 +225,20 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetNetworkInterfaces(NetworkInterface ** 
             {
                 ifp->hardwareAddress = ByteSpan(ifp->MacAddress, 6);
             }
+            if (esp_netif_get_ip_info(ifa, &ipv4_info) == ESP_OK)
+            {
+                memcpy(ifp->Ipv4AddressesBuffer[0], &(ipv4_info.ip.addr), kMaxIPv4AddrSize);
+                ifp->Ipv4AddressSpans[0] = ByteSpan(ifp->Ipv4AddressesBuffer[0], kMaxIPv4AddrSize);
+                ifp->IPv4Addresses       = chip::app::DataModel::List<chip::ByteSpan>(ifp->Ipv4AddressSpans, 1);
+            }
+            ipv6_addr_count = esp_netif_get_all_ip6(ifa, ip6_addr);
+            for (uint8_t idx = 0; idx < ipv6_addr_count; ++idx)
+            {
+                memcpy(ifp->Ipv6AddressesBuffer[idx], ip6_addr[idx].addr, kMaxIPv6AddrSize);
+                ifp->Ipv6AddressSpans[idx] = ByteSpan(ifp->Ipv6AddressesBuffer[idx], kMaxIPv6AddrSize);
+            }
+            ifp->IPv6Addresses = chip::app::DataModel::List<chip::ByteSpan>(ifp->Ipv6AddressSpans, ipv6_addr_count);
+
             ifp->Next = head;
             head      = ifp;
         }
@@ -245,7 +262,7 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiBssId(ByteSpan & BssId)
 {
     wifi_ap_record_t ap_info;
     esp_err_t err;
-    uint8_t macAddress[kMaxHardwareAddrSize];
+    static uint8_t macAddress[kMaxHardwareAddrSize];
 
     err = esp_wifi_sta_get_ap_info(&ap_info);
     if (err == ESP_OK)
@@ -314,44 +331,37 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiRssi(int8_t & rssi)
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiBeaconLostCount(uint32_t & beaconLostCount)
 {
-    beaconLostCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiCurrentMaxRate(uint64_t & currentMaxRate)
 {
-    currentMaxRate = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiPacketMulticastRxCount(uint32_t & packetMulticastRxCount)
 {
-    packetMulticastRxCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiPacketMulticastTxCount(uint32_t & packetMulticastTxCount)
 {
-    packetMulticastTxCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiPacketUnicastRxCount(uint32_t & packetUnicastRxCount)
 {
-    packetUnicastRxCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiPacketUnicastTxCount(uint32_t & packetUnicastTxCount)
 {
-    packetUnicastTxCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::GetWiFiOverrunCount(uint64_t & overrunCount)
 {
-    overrunCount = 0;
-    return CHIP_NO_ERROR;
+    return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
 
 CHIP_ERROR DiagnosticDataProviderImpl::ResetWiFiNetworkDiagnosticsCounts()
@@ -359,6 +369,11 @@ CHIP_ERROR DiagnosticDataProviderImpl::ResetWiFiNetworkDiagnosticsCounts()
     return CHIP_NO_ERROR;
 }
 #endif // CHIP_DEVICE_CONFIG_ENABLE_WIFI
+
+DiagnosticDataProvider & GetDiagnosticDataProviderImpl()
+{
+    return DiagnosticDataProviderImpl::GetDefaultInstance();
+}
 
 } // namespace DeviceLayer
 } // namespace chip

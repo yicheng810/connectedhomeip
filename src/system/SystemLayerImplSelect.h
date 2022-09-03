@@ -31,6 +31,7 @@
 
 #include <lib/support/ObjectLifeCycle.h>
 #include <system/SystemLayer.h>
+#include <system/SystemTimer.h>
 #include <system/WakeEvent.h>
 
 namespace chip {
@@ -39,12 +40,12 @@ namespace System {
 class LayerImplSelect : public LayerSocketsLoop
 {
 public:
-    LayerImplSelect()  = default;
-    ~LayerImplSelect() = default;
+    LayerImplSelect() = default;
+    ~LayerImplSelect() override { VerifyOrDie(mLayerState.Destroy()); }
 
     // Layer overrides.
     CHIP_ERROR Init() override;
-    CHIP_ERROR Shutdown() override;
+    void Shutdown() override;
     bool IsInitialized() const override { return mLayerState.IsInitialized(); }
     CHIP_ERROR StartTimer(Clock::Timeout delay, TimerCompleteCallback onComplete, void * appState) override;
     void CancelTimer(TimerCompleteCallback onComplete, void * appState) override;
@@ -71,8 +72,11 @@ public:
 #if CHIP_SYSTEM_CONFIG_USE_DISPATCH
     void SetDispatchQueue(dispatch_queue_t dispatchQueue) override { mDispatchQueue = dispatchQueue; };
     dispatch_queue_t GetDispatchQueue() override { return mDispatchQueue; };
-    void HandleTimerComplete(Timer * timer);
+    void HandleTimerComplete(TimerList::Node * timer);
 #endif // CHIP_SYSTEM_CONFIG_USE_DISPATCH
+
+    // Expose the result of WaitForEvents() for non-blocking socket implementations.
+    bool IsSelectResultValid() const { return mSelectResult >= 0; }
 
 protected:
     static SocketEvents SocketEventsFromFDs(int socket, const fd_set & readfds, const fd_set & writefds, const fd_set & exceptfds);
@@ -86,11 +90,17 @@ protected:
         int mFD;
         SocketEvents mPendingIO;
         SocketWatchCallback mCallback;
+#if CHIP_SYSTEM_CONFIG_USE_DISPATCH
+        dispatch_source_t mRdSource;
+        dispatch_source_t mWrSource;
+        void DisableAndClear();
+#endif
         intptr_t mCallbackData;
     };
     SocketWatch mSocketWatchPool[kSocketWatchMax];
 
-    Timer::MutexedList mTimerList;
+    TimerPool<TimerList::Node> mTimerPool;
+    TimerList mTimerList;
     timeval mNextTimeout;
 
     // Members for select loop

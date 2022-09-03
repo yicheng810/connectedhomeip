@@ -19,257 +19,92 @@
 #pragma once
 
 #include "../common/CHIPCommand.h"
-#include <app-common/zap-generated/cluster-objects.h>
-#include <app/data-model/DecodableList.h>
-#include <app/tests/suites/pics/PICSBooleanExpressionParser.h>
-#include <app/tests/suites/pics/PICSBooleanReader.h>
-#include <lib/support/BitFlags.h>
-#include <lib/support/TypeTraits.h>
-#include <lib/support/UnitTestUtils.h>
-#include <type_traits>
-#include <zap-generated/tests/CHIPClustersTest.h>
+#include <app/tests/suites/commands/commissioner/CommissionerCommands.h>
+#include <app/tests/suites/commands/delay/DelayCommands.h>
+#include <app/tests/suites/commands/discovery/DiscoveryCommands.h>
+#include <app/tests/suites/commands/interaction_model/InteractionModel.h>
+#include <app/tests/suites/commands/log/LogCommands.h>
+#include <app/tests/suites/commands/system/SystemCommands.h>
+#include <app/tests/suites/include/ConstraintsChecker.h>
+#include <app/tests/suites/include/PICSChecker.h>
+#include <app/tests/suites/include/TestRunner.h>
+#include <app/tests/suites/include/ValueChecker.h>
 
-constexpr uint16_t kTimeoutInSeconds = 30;
+constexpr uint16_t kTimeoutInSeconds = 90;
 
-class TestCommand : public CHIPCommand
+class TestCommand : public TestRunner,
+                    public CHIPCommand,
+                    public ValueChecker,
+                    public ConstraintsChecker,
+                    public PICSChecker,
+                    public LogCommands,
+                    public CommissionerCommands,
+                    public DiscoveryCommands,
+                    public SystemCommands,
+                    public DelayCommands,
+                    public InteractionModel
 {
 public:
-    TestCommand(const char * commandName) :
-        CHIPCommand(commandName), mOnDeviceConnectedCallback(OnDeviceConnectedFn, this),
-        mOnDeviceConnectionFailureCallback(OnDeviceConnectionFailureFn, this)
+    TestCommand(const char * commandName, uint16_t testsCount, CredentialIssuerCommands * credsIssuerConfig) :
+        TestRunner(commandName, testsCount), CHIPCommand(commandName, credsIssuerConfig),
+        mOnDeviceConnectedCallback(OnDeviceConnectedFn, this), mOnDeviceConnectionFailureCallback(OnDeviceConnectionFailureFn, this)
     {
-        AddArgument("node-id", 0, UINT64_MAX, &mNodeId);
+        AddArgument("continueOnFailure", 0, 1, &mContinueOnFailure,
+                    "Boolean indicating if the test runner should continue execution if a test fails. Default to false.");
         AddArgument("delayInMs", 0, UINT64_MAX, &mDelayInMs);
-        AddArgument("timeout", 0, UINT16_MAX, &mTimeout);
-        AddArgument("endpoint-id", CHIP_ZCL_ENDPOINT_MIN, CHIP_ZCL_ENDPOINT_MAX, &mEndpointId);
         AddArgument("PICS", &mPICSFilePath);
     }
 
+    ~TestCommand(){};
+
     /////////// CHIPCommand Interface /////////
     CHIP_ERROR RunCommand() override;
-    chip::System::Clock::Timeout GetWaitDuration() const override
-    {
-        return chip::System::Clock::Seconds16(mTimeout.HasValue() ? mTimeout.Value() : kTimeoutInSeconds);
-    }
-
-    virtual void NextTest() = 0;
-
-    /////////// GlobalCommands Interface /////////
-    CHIP_ERROR Wait(chip::System::Clock::Timeout ms);
-    CHIP_ERROR WaitForMs(uint16_t ms) { return Wait(chip::System::Clock::Milliseconds32(ms)); }
-    CHIP_ERROR WaitForCommissionee();
-    CHIP_ERROR Log(const char * message);
-    CHIP_ERROR UserPrompt(const char * message);
 
 protected:
-    std::map<std::string, ChipDevice *> mDevices;
-    chip::NodeId mNodeId;
+    /////////// DelayCommands Interface /////////
+    CHIP_ERROR WaitForCommissionee(const char * identity,
+                                   const chip::app::Clusters::DelayCommands::Commands::WaitForCommissionee::Type & value) override;
+    void OnWaitForMs() override { NextTest(); };
 
-    static void OnDeviceConnectedFn(void * context, chip::OperationalDeviceProxy * device);
-    static void OnDeviceConnectionFailureFn(void * context, NodeId deviceId, CHIP_ERROR error);
-    static void OnWaitForMsFn(chip::System::Layer * systemLayer, void * context);
+    /////////// Interaction Model Interface /////////
+    chip::DeviceProxy * GetDevice(const char * identity) override { return mDevices[identity].get(); }
+    void OnResponse(const chip::app::StatusIB & status, chip::TLV::TLVReader * data) override{};
 
-    CHIP_ERROR ContinueOnChipMainThread() { return WaitForMs(0); };
+    static void OnDeviceConnectedFn(void * context, chip::Messaging::ExchangeManager & exchangeMgr,
+                                    chip::SessionHandle & sessionHandle);
+    static void OnDeviceConnectionFailureFn(void * context, const chip::ScopedNodeId & peerId, CHIP_ERROR error);
 
-    void Exit(std::string message);
-    void ThrowFailureResponse();
-    void ThrowSuccessResponse();
+    CHIP_ERROR ContinueOnChipMainThread(CHIP_ERROR err) override;
 
-    bool CheckConstraintType(const char * itemName, const char * current, const char * expected);
-    bool CheckConstraintFormat(const char * itemName, const char * current, const char * expected);
-    bool CheckConstraintMinLength(const char * itemName, uint64_t current, uint64_t expected);
-    bool CheckConstraintMaxLength(const char * itemName, uint64_t current, uint64_t expected);
-    bool CheckConstraintStartsWith(const char * itemName, const chip::Span<const char> current, const char * expected);
-    bool CheckConstraintEndsWith(const char * itemName, const chip::Span<const char> current, const char * expected);
-    template <typename T>
-    bool CheckConstraintMinValue(const char * itemName, T current, T expected)
+    chip::Controller::DeviceCommissioner & GetCommissioner(const char * identity) override
     {
-        if (current < expected)
-        {
-            Exit(std::string(itemName) + " value < minValue: " + std::to_string(current) + " < " + std::to_string(expected));
-            return false;
-        }
+        return CHIPCommand::GetCommissioner(identity);
+    };
 
-        return true;
-    }
-    template <typename T>
-    bool CheckConstraintMaxValue(const char * itemName, T current, T expected)
-    {
-        if (current > expected)
-        {
-            Exit(std::string(itemName) + " value > maxValue: " + std::to_string(current) + " > " + std::to_string(expected));
-            return false;
-        }
-
-        return true;
-    }
-    template <typename T, typename U>
-    bool CheckConstraintNotValue(const char * itemName, T current, U expected)
-    {
-        if (current == expected)
-        {
-            Exit(std::string(itemName) + " got unexpected value: " + std::to_string(current));
-            return false;
-        }
-
-        return true;
-    }
-
-    bool CheckConstraintNotValue(const char * itemName, chip::CharSpan current, chip::CharSpan expected)
-    {
-        if (current.data_equal(expected))
-        {
-            Exit(std::string(itemName) + " got unexpected value: " + std::string(current.data(), current.size()));
-            return false;
-        }
-
-        return true;
-    }
-
-    bool CheckConstraintNotValue(const char * itemName, chip::ByteSpan current, chip::ByteSpan expected)
-    {
-        if (current.data_equal(expected))
-        {
-            Exit(std::string(itemName) + " got unexpected value of size: " + std::to_string(current.size()));
-            return false;
-        }
-
-        return true;
-    }
-
-    // Allow a different expected type from the actual value type, because if T
-    // is short the literal we are using is not short-typed.
-    template <typename T, typename U, typename std::enable_if_t<!std::is_enum<T>::value, int> = 0>
-    bool CheckValue(const char * itemName, T current, U expected)
-    {
-        if (current != expected)
-        {
-            Exit(std::string(itemName) + " value mismatch: expected " + std::to_string(expected) + " but got " +
-                 std::to_string(current));
-            return false;
-        }
-
-        return true;
-    }
-
-    template <typename T, typename U>
-    bool CheckValue(const char * itemName, chip::BitFlags<T> current, U expected)
-    {
-        return CheckValue(itemName, current.Raw(), expected);
-    }
-
-    template <typename T, typename U, typename std::enable_if_t<std::is_enum<T>::value, int> = 0>
-    bool CheckValue(const char * itemName, T current, U expected)
-    {
-        return CheckValue(itemName, chip::to_underlying(current), expected);
-    }
-
-    /**
-     * Check that the next list item, which is at index "index", exists and
-     * decodes properly.
-     */
-    template <typename ListType>
-    bool CheckNextListItemDecodes(const char * listName, typename std::remove_reference_t<ListType>::Iterator & iter, size_t index)
-    {
-        bool hasValue = iter.Next();
-        if (iter.GetStatus() != CHIP_NO_ERROR)
-        {
-            Exit(std::string(listName) + " value mismatch: error '" + iter.GetStatus().AsString() + "'decoding item at index " +
-                 std::to_string(index));
-            return false;
-        }
-
-        if (hasValue)
-        {
-            return true;
-        }
-
-        Exit(std::string(listName) + " value mismatch: should have value at index " + std::to_string(index) +
-             " but doesn't (actual value too short)");
-        return false;
-    }
-
-    /**
-     * Check that there are no more list items now that we have seen
-     * "expectedCount" of them.
-     */
-    template <typename ListType>
-    bool CheckNoMoreListItems(const char * listName, typename std::remove_reference_t<ListType>::Iterator & iter,
-                              size_t expectedCount)
-    {
-        bool hasValue = iter.Next();
-        if (iter.GetStatus() != CHIP_NO_ERROR)
-        {
-            Exit(std::string(listName) + " value mismatch: error '" + iter.GetStatus().AsString() +
-                 "'decoding item after we have seen " + std::to_string(expectedCount) + " items");
-            return false;
-        }
-
-        if (!hasValue)
-        {
-            return true;
-        }
-
-        Exit(std::string(listName) + " value mismatch: expected only " + std::to_string(expectedCount) +
-             " items, but have more than that (actual value too long)");
-        return false;
-    }
-
-    bool CheckValueAsString(const char * itemName, chip::ByteSpan current, chip::ByteSpan expected);
-
-    bool CheckValueAsString(const char * itemName, chip::CharSpan current, chip::CharSpan expected);
-
-    template <typename T>
-    bool CheckValuePresent(const char * itemName, const chip::Optional<T> & value)
-    {
-        if (value.HasValue())
-        {
-            return true;
-        }
-
-        Exit(std::string(itemName) + " expected to have value but doesn't");
-        return false;
-    }
-
-    template <typename T>
-    bool CheckValueNull(const char * itemName, const chip::app::DataModel::Nullable<T> & value)
-    {
-        if (value.IsNull())
-        {
-            return true;
-        }
-
-        Exit(std::string(itemName) + " expected to be null but isn't");
-        return false;
-    }
-
-    template <typename T>
-    bool CheckValueNonNull(const char * itemName, const chip::app::DataModel::Nullable<T> & value)
-    {
-        if (!value.IsNull())
-        {
-            return true;
-        }
-
-        Exit(std::string(itemName) + " expected to not be null but is");
-        return false;
-    }
+    static void ExitAsync(intptr_t context);
+    void Exit(std::string message, CHIP_ERROR err = CHIP_ERROR_INTERNAL) override;
 
     chip::Callback::Callback<chip::OnDeviceConnected> mOnDeviceConnectedCallback;
     chip::Callback::Callback<chip::OnDeviceConnectionFailure> mOnDeviceConnectionFailureCallback;
 
-    bool ShouldSkip(const char * expression);
-
-    void Wait()
+    bool IsUnsupported(const chip::app::StatusIB & status)
     {
-        if (mDelayInMs.HasValue())
-        {
-            chip::test_utils::SleepMillis(mDelayInMs.Value());
-        }
-    };
-    chip::Optional<uint64_t> mDelayInMs;
+        return status.mStatus == chip::Protocols::InteractionModel::Status::UnsupportedAttribute ||
+            status.mStatus == chip::Protocols::InteractionModel::Status::UnsupportedCommand;
+    }
+
     chip::Optional<char *> mPICSFilePath;
-    chip::Optional<chip::EndpointId> mEndpointId;
     chip::Optional<uint16_t> mTimeout;
-    chip::Optional<std::map<std::string, bool>> PICS;
+    std::map<std::string, std::unique_ptr<chip::OperationalDeviceProxy>> mDevices;
+
+    // When set to false, prevents interaction model events from affecting the current test status.
+    // This flag exists because if an error happens while processing a response the allocated
+    // command client/sender (ReadClient/WriteClient/CommandSender) can not be deallocated
+    // as it still used by the stack afterward. So a task is scheduled to run to close the
+    // test suite as soon as possible, and pending events are ignored in between.
+    bool mContinueProcessing = true;
+
+    // When set to true, the test runner continue to run after a test failure.
+    chip::Optional<bool> mContinueOnFailure;
+    std::vector<std::string> mErrorMessages;
 };

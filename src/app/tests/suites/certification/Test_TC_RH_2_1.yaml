@@ -14,7 +14,11 @@
 
 name: 9.2.1. [TC-RH-2.1] Attributes with server as DUT
 
+PICS:
+    - RH.S
+
 config:
+    nodeId: 0x12344321
     cluster: "Relative Humidity Measurement"
     endpoint: 1
 
@@ -22,67 +26,47 @@ tests:
     - label: "Wait for the commissioned device to be retrieved"
       cluster: "DelayCommands"
       command: "WaitForCommissionee"
+      arguments:
+          values:
+              - name: "nodeId"
+                value: nodeId
 
-    - label: "Reads the mandatory attribute: MeasuredValue"
-      disabled: true
-      command: "readAttribute"
-      attribute: "measured value"
-      response:
-          value: 65535
-
-    - label: "Reads constraints of attribute: MeasuredValue"
-      command: "readAttribute"
-      attribute: "measured value"
-      response:
-          constraints:
-              type: uint16
-
-    - label: "Reads the mandatory attribute: MinMeasuredValue"
-      disabled: true
-      command: "readAttribute"
-      attribute: "min measured value"
-      response:
-          value: 65535
-
-    - label: "Reads constraints of attribute: MinMeasuredValue"
+    - label: "TH reads the MinMeasuredValue attribute from the DUT"
+      PICS: RH.S.A0001
       command: "readAttribute"
       attribute: "min measured value"
       response:
           constraints:
-              type: uint16
+              type: int16u
               minValue: 0
               maxValue: 9999
 
-    - label: "Reads the mandatory attribute: MaxMeasuredValue"
-      disabled: true
-      command: "readAttribute"
-      attribute: "max measured value"
-      response:
-          value: 65535
-
-    - label: "Reads constraints of attribute: MaxMeasuredValue"
-      disabled: true
+    - label: "TH reads the MaxMeasuredValue attribute from the DUT"
+      PICS: RH.S.A0002
       command: "readAttribute"
       attribute: "max measured value"
       response:
           constraints:
-              type: uint16
+              type: int16u
               minValue: 1
               maxValue: 10000
 
-    - label: "Reads the optional attribute: Tolerance"
-      disabled: true
+    - label: "TH reads the MeasuredValue attribute from the DUT"
+      PICS: RH.S.A0000
       command: "readAttribute"
-      attribute: "tolerance"
+      attribute: "measured value"
       response:
-          value: 0
+          constraints:
+              type: int16u
+              minValue: 0
+              maxValue: 10000
 
-    - label: "Reads constraints of attribute: Tolerance"
-      disabled: true
+    - label: "TH reads the Tolerance attribute from the DUT"
+      PICS: RH.S.A0003
       command: "readAttribute"
       attribute: "tolerance"
       response:
           constraints:
-              type: uint16
+              type: int16u
               minValue: 0
               maxValue: 2048

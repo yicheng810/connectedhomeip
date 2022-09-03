@@ -24,7 +24,6 @@
 #include "QRCodeSetupPayloadParser.h"
 #include "Base38Decode.h"
 
-#include <math.h>
 #include <memory>
 #include <string.h>
 #include <vector>
@@ -46,8 +45,9 @@ static CHIP_ERROR readBits(std::vector<uint8_t> buf, size_t & index, uint64_t & 
     dest = 0;
     if (index + numberOfBitsToRead > buf.size() * 8 || numberOfBitsToRead > sizeof(uint64_t) * 8)
     {
-        ChipLogError(SetupPayload, "Error parsing QR code. startIndex %zu numberOfBitsToLoad %zu buf_len %zu ", index,
-                     numberOfBitsToRead, buf.size());
+        ChipLogError(SetupPayload, "Error parsing QR code. startIndex %u numberOfBitsToLoad %u buf_len %u ",
+                     static_cast<unsigned int>(index), static_cast<unsigned int>(numberOfBitsToRead),
+                     static_cast<unsigned int>(buf.size()));
         return CHIP_ERROR_INVALID_ARGUMENT;
     }
 
@@ -194,8 +194,9 @@ CHIP_ERROR QRCodeSetupPayloadParser::retrieveOptionalInfos(SetupPayload & outPay
             continue;
         }
 
-        const uint8_t tag = static_cast<uint8_t>(TLV::TagNumFromTag(reader.GetTag()));
-        VerifyOrReturnError(TLV::IsContextTag(tag) == true || TLV::IsProfileTag(tag) == true, CHIP_ERROR_INVALID_TLV_TAG);
+        TLV::Tag tag = reader.GetTag();
+        VerifyOrReturnError(TLV::IsContextTag(tag), CHIP_ERROR_INVALID_TLV_TAG);
+        const uint8_t tagNumber = static_cast<uint8_t>(TLV::TagNumFromTag(tag));
 
         optionalQRCodeInfoType elemType = optionalQRCodeInfoTypeUnknown;
         if (type == TLV::kTLVType_UTF8String)
@@ -204,13 +205,13 @@ CHIP_ERROR QRCodeSetupPayloadParser::retrieveOptionalInfos(SetupPayload & outPay
         }
         if (type == TLV::kTLVType_SignedInteger || type == TLV::kTLVType_UnsignedInteger)
         {
-            elemType = outPayload.getNumericTypeFor(tag);
+            elemType = outPayload.getNumericTypeFor(tagNumber);
         }
 
-        if (IsCHIPTag(tag))
+        if (SetupPayload::IsCommonTag(tagNumber))
         {
             OptionalQRCodeInfoExtension info;
-            info.tag = tag;
+            info.tag = tagNumber;
             ReturnErrorOnFailure(retrieveOptionalInfo(reader, info, elemType));
 
             ReturnErrorOnFailure(outPayload.addOptionalExtensionData(info));
@@ -218,7 +219,7 @@ CHIP_ERROR QRCodeSetupPayloadParser::retrieveOptionalInfos(SetupPayload & outPay
         else
         {
             OptionalQRCodeInfo info;
-            info.tag = tag;
+            info.tag = tagNumber;
             ReturnErrorOnFailure(retrieveOptionalInfo(reader, info, elemType));
 
             ReturnErrorOnFailure(outPayload.addOptionalVendorData(info));
@@ -250,7 +251,7 @@ CHIP_ERROR QRCodeSetupPayloadParser::parseTLVFields(SetupPayload & outPayload, u
     }
 
     TLV::ContiguousBufferTLVReader innerStructureReader;
-    ReturnErrorOnFailure(openTLVContainer(rootReader, TLV::kTLVType_Structure, TLV::AnonymousTag, innerStructureReader));
+    ReturnErrorOnFailure(openTLVContainer(rootReader, TLV::kTLVType_Structure, TLV::AnonymousTag(), innerStructureReader));
     ReturnErrorOnFailure(innerStructureReader.Next());
     err = retrieveOptionalInfos(outPayload, innerStructureReader);
 
@@ -352,17 +353,23 @@ CHIP_ERROR QRCodeSetupPayloadParser::populatePayload(SetupPayload & outPayload)
     ReturnErrorOnFailure(readBits(buf, indexToReadFrom, dest, kRendezvousInfoFieldLengthInBits));
     static_assert(kRendezvousInfoFieldLengthInBits <= 8 * sizeof(RendezvousInformationFlag),
                   "Won't fit in RendezvousInformationFlags");
-    outPayload.rendezvousInformation = RendezvousInformationFlags(static_cast<RendezvousInformationFlag>(dest));
+    outPayload.rendezvousInformation.SetValue(
+        RendezvousInformationFlags().SetRaw(static_cast<std::underlying_type_t<RendezvousInformationFlag>>(dest)));
 
     ReturnErrorOnFailure(readBits(buf, indexToReadFrom, dest, kPayloadDiscriminatorFieldLengthInBits));
     static_assert(kPayloadDiscriminatorFieldLengthInBits <= 16, "Won't fit in uint16_t");
-    outPayload.discriminator = static_cast<uint16_t>(dest);
+    outPayload.discriminator.SetLongValue(static_cast<uint16_t>(dest));
 
     ReturnErrorOnFailure(readBits(buf, indexToReadFrom, dest, kSetupPINCodeFieldLengthInBits));
     static_assert(kSetupPINCodeFieldLengthInBits <= 32, "Won't fit in uint32_t");
     outPayload.setUpPINCode = static_cast<uint32_t>(dest);
 
     ReturnErrorOnFailure(readBits(buf, indexToReadFrom, dest, kPaddingFieldLengthInBits));
+    if (dest != 0)
+    {
+        ChipLogError(SetupPayload, "Payload padding bits are not all 0: 0x%x", static_cast<unsigned>(dest));
+        return CHIP_ERROR_INVALID_ARGUMENT;
+    }
 
     return populateTLV(outPayload, buf, indexToReadFrom);
 }

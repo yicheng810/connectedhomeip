@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2021 Project CHIP Authors
+ *    Copyright (c) 2022 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -33,26 +33,11 @@ namespace Controller {
 class DLL_EXPORT OtaSoftwareUpdateProviderCluster : public ClusterBase
 {
 public:
-    OtaSoftwareUpdateProviderCluster() : ClusterBase(app::Clusters::OtaSoftwareUpdateProvider::Id) {}
+    OtaSoftwareUpdateProviderCluster(Messaging::ExchangeManager & exchangeManager, const SessionHandle & session,
+                                     EndpointId endpoint) :
+        ClusterBase(exchangeManager, session, app::Clusters::OtaSoftwareUpdateProvider::Id, endpoint)
+    {}
     ~OtaSoftwareUpdateProviderCluster() {}
-
-    // Cluster Commands
-    CHIP_ERROR ApplyUpdateRequest(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                  chip::ByteSpan updateToken, uint32_t newVersion);
-    CHIP_ERROR NotifyUpdateApplied(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                   chip::ByteSpan updateToken, uint32_t softwareVersion);
-    CHIP_ERROR QueryImage(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                          chip::VendorId vendorId, uint16_t productId, uint32_t softwareVersion, uint8_t protocolsSupported,
-                          uint16_t hardwareVersion, chip::CharSpan location, bool requestorCanConsent,
-                          chip::ByteSpan metadataForProvider);
-
-    // Cluster Attributes
-    CHIP_ERROR ReadAttributeClusterRevision(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback);
-    CHIP_ERROR SubscribeAttributeClusterRevision(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                                 uint16_t minInterval, uint16_t maxInterval);
-    CHIP_ERROR ReportAttributeClusterRevision(Callback::Cancelable * onReportCallback);
-
-private:
 };
 
 } // namespace Controller

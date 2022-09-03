@@ -35,7 +35,8 @@ RUN apt-get -fy install git vim emacs sudo \
     wget curl telnet \
     docker.io \
     iputils-ping net-tools \
-    libncurses5
+    libncurses5 \
+    libpython2.7
 
 RUN groupadd -g $USER_GID $USERNAME
 RUN useradd -s /bin/bash -u $USER_UID -g $USER_GID -G docker -m $USERNAME
@@ -53,8 +54,35 @@ RUN curl https://raw.githubusercontent.com/restyled-io/restyler/master/bin/resty
 RUN chmod +x /home/$USERNAME/bin/restyle-path
 RUN chown -R $USERNAME:$USERNAME /home/$USERNAME
 RUN echo "PATH=/home/$USERNAME/bin:${PATH}" >> /home/$USERNAME/.bashrc
+
 # $USERNAME needs to own the esp-idf and tools for the examples to build
 RUN chown -R $USERNAME:$USERNAME /opt/espressif/esp-idf
 RUN chown -R $USERNAME:$USERNAME /opt/espressif/tools
+
 # $USERNAME needs to own west configuration to build nRF Connect examples
-RUN chown -R $USERNAME:$USERNAME /opt/NordicSemiconductor/nrfconnect/.west
+RUN chown -R $USERNAME:$USERNAME /opt/NordicSemiconductor/nrfconnect/
+
+# allow read/write access to header and libraries
+RUN chown -R $USERNAME:$USERNAME /opt/ubuntu-21.04-aarch64-sysroot/usr/
+
+# allow licenses to be accepted
+RUN chown -R $USERNAME:$USERNAME /opt/android/sdk
+
+# AmebaD requires access to change build_info.h
+RUN chown -R $USERNAME:$USERNAME /opt/ameba/ambd_sdk_with_chip_non_NDA/
+
+# NXP uses a patch_sdk script to change SDK files
+RUN chown -R $USERNAME:$USERNAME /opt/sdk/sdks/
+
+RUN chown -R $USERNAME:$USERNAME /opt/fsl-imx-xwayland/5.15-kirkstone/
+
+# Add access to openocd for VSCode debugging
+RUN chown -R $USERNAME:$USERNAME /opt/openocd
+
+# Fix Tizen SDK paths for new user
+RUN sed -i '/^TIZEN_SDK_DATA_PATH/d' $TIZEN_SDK_ROOT/sdk.info \
+    && echo TIZEN_SDK_DATA_PATH=/home/$USERNAME/tizen-sdk-data >> $TIZEN_SDK_ROOT/sdk.info \
+    && ln -sf /home/$USERNAME/.tizen-cli-config $TIZEN_SDK_ROOT/tools/.tizen-cli-config \
+    && : # last line
+
+ENV TIZEN_ROOTFS /tizen_rootfs

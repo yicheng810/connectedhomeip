@@ -26,7 +26,7 @@
 
 #include <platform/internal/GenericConfigurationManagerImpl.h>
 
-#include "EFR32Config.h"
+#include <platform/EFR32/EFR32Config.h>
 
 namespace chip {
 namespace DeviceLayer {
@@ -77,10 +77,20 @@ private:
     static void DoFactoryReset(intptr_t arg);
 };
 
+#ifndef SL_WIFI
 inline CHIP_ERROR ConfigurationManagerImpl::GetPrimaryWiFiMACAddress(uint8_t * buf)
 {
     return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
+#endif /* SL_WIFI */
+
+/**
+ * Returns the platform-specific implementation of the ConfigurationManager object.
+ *
+ * Applications can use this to gain access to features of the ConfigurationManager
+ * that are specific to the selected platform.
+ */
+ConfigurationManager & ConfigurationMgrImpl();
 
 } // namespace DeviceLayer
 } // namespace chip

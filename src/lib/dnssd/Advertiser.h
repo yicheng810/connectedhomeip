@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <cstdint>
 
-#include <inet/InetLayer.h>
 #include <lib/core/CHIPError.h>
 #include <lib/core/Optional.h>
 #include <lib/core/PeerId.h>
@@ -66,6 +65,14 @@ public:
     }
     uint64_t GetPort() const { return mPort; }
 
+    Derived & SetInterfaceId(Inet::InterfaceId interfaceId)
+    {
+        mInterfaceId = interfaceId;
+        return *reinterpret_cast<Derived *>(this);
+    }
+
+    Inet::InterfaceId GetInterfaceId() const { return mInterfaceId; }
+
     Derived & EnableIpV4(bool enable)
     {
         mEnableIPv4 = enable;
@@ -81,12 +88,12 @@ public:
     const chip::ByteSpan GetMac() const { return chip::ByteSpan(mMacStorage, mMacLength); }
 
     // Common Flags
-    Derived & SetMRPConfig(const ReliableMessageProtocolConfig & config)
+    Derived & SetLocalMRPConfig(const Optional<ReliableMessageProtocolConfig> & config)
     {
-        mMRPConfig.SetValue(config);
+        mLocalMRPConfig = config;
         return *reinterpret_cast<Derived *>(this);
     }
-    const Optional<ReliableMessageProtocolConfig> & GetMRPConfig() const { return mMRPConfig; }
+    const Optional<ReliableMessageProtocolConfig> & GetLocalMRPConfig() const { return mLocalMRPConfig; }
     Derived & SetTcpSupported(Optional<bool> tcpSupported)
     {
         mTcpSupported = tcpSupported;
@@ -96,10 +103,11 @@ public:
 
 private:
     uint16_t mPort                   = CHIP_PORT;
+    Inet::InterfaceId mInterfaceId   = Inet::InterfaceId::Null();
     bool mEnableIPv4                 = true;
     uint8_t mMacStorage[kMaxMacSize] = {};
     size_t mMacLength                = 0;
-    Optional<ReliableMessageProtocolConfig> mMRPConfig;
+    Optional<ReliableMessageProtocolConfig> mLocalMRPConfig;
     Optional<bool> mTcpSupported;
 };
 
@@ -121,6 +129,8 @@ public:
         return *this;
     }
     PeerId GetPeerId() const { return mPeerId; }
+
+    CompressedFabricId GetCompressedFabricId() const { return mPeerId.GetCompressedFabricId(); }
 
 private:
     PeerId mPeerId;
@@ -170,12 +180,12 @@ public:
     }
     CommissioningMode GetCommissioningMode() const { return mCommissioningMode; }
 
-    CommissionAdvertisingParameters & SetDeviceType(Optional<uint16_t> deviceType)
+    CommissionAdvertisingParameters & SetDeviceType(Optional<uint32_t> deviceType)
     {
         mDeviceType = deviceType;
         return *this;
     }
-    Optional<uint16_t> GetDeviceType() const { return mDeviceType; }
+    Optional<uint32_t> GetDeviceType() const { return mDeviceType; }
 
     CommissionAdvertisingParameters & SetDeviceName(Optional<const char *> deviceName)
     {
@@ -195,7 +205,7 @@ public:
         return mDeviceNameHasValue ? Optional<const char *>::Value(mDeviceName) : Optional<const char *>::Missing();
     }
 
-    CommissionAdvertisingParameters & SetRotatingId(Optional<const char *> rotatingId)
+    CommissionAdvertisingParameters & SetRotatingDeviceId(Optional<const char *> rotatingId)
     {
         if (rotatingId.HasValue())
         {
@@ -208,12 +218,12 @@ public:
         }
         return *this;
     }
-    Optional<const char *> GetRotatingId() const
+    Optional<const char *> GetRotatingDeviceId() const
     {
         return mRotatingIdHasValue ? Optional<const char *>::Value(mRotatingId) : Optional<const char *>::Missing();
     }
 
-    CommissionAdvertisingParameters & SetPairingInstr(Optional<const char *> pairingInstr)
+    CommissionAdvertisingParameters & SetPairingInstruction(Optional<const char *> pairingInstr)
     {
         if (pairingInstr.HasValue())
         {
@@ -226,7 +236,7 @@ public:
         }
         return *this;
     }
-    Optional<const char *> GetPairingInstr() const
+    Optional<const char *> GetPairingInstruction() const
     {
         return mPairingInstrHasValue ? Optional<const char *>::Value(mPairingInstr) : Optional<const char *>::Missing();
     }
@@ -252,13 +262,13 @@ private:
     CommissioningMode mCommissioningMode = CommissioningMode::kEnabledBasic;
     chip::Optional<uint16_t> mVendorId;
     chip::Optional<uint16_t> mProductId;
-    chip::Optional<uint16_t> mDeviceType;
+    chip::Optional<uint32_t> mDeviceType;
     chip::Optional<uint16_t> mPairingHint;
 
     char mDeviceName[kKeyDeviceNameMaxLength + 1];
     bool mDeviceNameHasValue = false;
 
-    char mRotatingId[kKeyRotatingIdMaxLength + 1];
+    char mRotatingId[kKeyRotatingDeviceIdMaxLength + 1];
     bool mRotatingIdHasValue = false;
 
     char mPairingInstr[kKeyPairingInstructionMaxLength + 1];
@@ -287,7 +297,7 @@ public:
      * The method must be called before other methods of this class.
      * If the advertiser has already been initialized, the method exits immediately with no error.
      */
-    virtual CHIP_ERROR Init(chip::Inet::InetLayer * inetLayer) = 0;
+    virtual CHIP_ERROR Init(chip::Inet::EndPointManager<chip::Inet::UDPEndPoint> * udpEndPointManager) = 0;
 
     /**
      * Shuts down the advertiser.
@@ -323,7 +333,14 @@ public:
     /**
      * Returns the commissionable node service instance name formatted as hex string.
      */
-    virtual CHIP_ERROR GetCommissionableInstanceName(char * instanceName, size_t maxLength) = 0;
+    virtual CHIP_ERROR GetCommissionableInstanceName(char * instanceName, size_t maxLength) const = 0;
+
+    /**
+     * Generates an updated commissionable instance name.  This happens
+     * automatically when Init() is called, but may be needed at other times as
+     * well.
+     */
+    virtual CHIP_ERROR UpdateCommissionableInstanceName() = 0;
 
     /// Provides the system-wide implementation of the service advertiser
     static ServiceAdvertiser & Instance();

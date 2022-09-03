@@ -18,24 +18,13 @@
 #pragma once
 
 #include <app-common/zap-generated/af-structs.h>
-#include <app/Command.h>
+#include <app/CommandHandler.h>
 #include <app/InteractionModelEngine.h>
 #include <app/data-model/Nullable.h>
 #include <app/util/af-enums.h>
 #include <inttypes.h>
 #include <lib/support/FunctionTraits.h>
 #include <lib/support/Span.h>
-
-// Note: The IMDefaultResponseCallback is a bridge to the old CallbackMgr before IM is landed, so it still accepts EmberAfStatus
-// instead of IM status code.
-// #6308 should handle IM error code on the application side, either modify this function or remove this.
-bool IMDefaultResponseCallback(const chip::app::Command * commandObj, EmberAfStatus status);
-bool IMReadReportAttributesResponseCallback(const chip::app::ReadClient * apReadClient,
-                                            const chip::app::ConcreteAttributePath * aPath, chip::TLV::TLVReader * apData,
-                                            chip::Protocols::InteractionModel::Status status);
-bool IMWriteResponseCallback(const chip::app::WriteClient * writeClient, chip::Protocols::InteractionModel::Status status);
-bool IMSubscribeResponseCallback(const chip::app::ReadClient * apSubscribeClient, EmberAfStatus status);
-void LogStatus(uint8_t status);
 
 // Global Response Callbacks
 typedef void (*DefaultSuccessCallback)(void * context);

@@ -4,20 +4,30 @@
 
 #include "TestCommand.h"
 
-{{#if (getTests)}}
-{{>test_cluster tests=(getTests)}}
-{{/if}}
+#include <lib/support/CHIPListUtils.h>
+
+{{>test_cluster tests="../linux/apps/app1/ciTests.json" credsIssuerConfigArg=false needsWaitDuration=false}}
 
 std::unique_ptr<TestCommand>GetTestCommand(std::string testName)
 {
-  {{#if (getTests)}}
-  {{#chip_tests (getTests)}}
+  {{#chip_tests "../linux/apps/app1/ciTests.json"}}
   if (testName == "{{filename}}")
   {
-      return std::unique_ptr<{{filename}}>(new {{filename}}());
+      return std::unique_ptr<{{filename}}Suite>(new {{filename}}Suite());
   }
   {{/chip_tests}}
-  {{/if}}
 
   return nullptr;
+}
+
+void PrintTestCommands()
+{
+  {{#chip_tests "../linux/apps/app1/ciTests.json"}}
+  {{#first}}
+  ChipLogError(chipTool, "Supported commands:");
+  {{/first}}
+  ChipLogError(chipTool, "\t* {{filename}}");
+  {{else}}
+  ChipLogError("\t No available commands.");
+  {{/chip_tests}}
 }

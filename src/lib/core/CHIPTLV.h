@@ -32,10 +32,13 @@
 #include <lib/core/CHIPTLVTypes.h>
 
 #include <lib/support/BitFlags.h>
+#include <lib/support/BitMask.h>
 #include <lib/support/DLLUtil.h>
+#include <lib/support/EnforceFormat.h>
 #include <lib/support/ScopedBuffer.h>
 #include <lib/support/Span.h>
 #include <lib/support/TypeTraits.h>
+#include <lib/support/logging/Constants.h>
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -53,12 +56,12 @@
 namespace chip {
 namespace TLV {
 
-inline uint8_t operator|(TLVElementType lhs, TLVTagControl rhs)
+constexpr inline uint8_t operator|(TLVElementType lhs, TLVTagControl rhs)
 {
     return static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs);
 }
 
-inline uint8_t operator|(TLVTagControl lhs, TLVElementType rhs)
+constexpr inline uint8_t operator|(TLVTagControl lhs, TLVElementType rhs)
 {
     return static_cast<uint8_t>(lhs) | static_cast<uint8_t>(rhs);
 }
@@ -530,6 +533,21 @@ public:
     }
 
     /**
+     * Get the value of the current element as a BitMask value, if it's an integer
+     * value that fits in the BitMask type.
+     *
+     * @param[out] v Receives the value associated with current TLV element.
+     */
+    template <typename T>
+    CHIP_ERROR Get(BitMask<T> & v)
+    {
+        std::underlying_type_t<T> val;
+        ReturnErrorOnFailure(Get(val));
+        v.SetRaw(val);
+        return CHIP_NO_ERROR;
+    }
+
+    /**
      * Get the value of the current byte or UTF8 string element.
      *
      * To determine the required input buffer size, call the GetLength() method before calling GetBytes().
@@ -627,10 +645,12 @@ public:
     /**
      * Get a pointer to the initial encoded byte of a TLV byte or UTF8 string element.
      *
-     * This method returns a direct pointer the encoded string value within the underlying input buffer.
-     * To succeed, the method requires that the entirety of the string value be present in a single buffer.
-     * Otherwise the method returns #CHIP_ERROR_TLV_UNDERRUN.  This makes the method of limited use when
-     * reading data from multiple discontiguous buffers.
+     * This method returns a direct pointer to the encoded string value within the underlying input buffer
+     * if a non-zero length string payload is present. To succeed, the method requires that the entirety of the
+     * string value be present in a single buffer. Otherwise the method returns #CHIP_ERROR_TLV_UNDERRUN.
+     * This makes the method of limited use when reading data from multiple discontiguous buffers.
+     *
+     * If no string data is present (i.e the length is zero), data shall be updated to point to null.
      *
      * @param[out] data                     A reference to a const pointer that will receive a pointer to
      *                                      the underlying string data.
@@ -836,6 +856,19 @@ public:
     uint32_t GetRemainingLength() const { return mMaxLen - mLenRead; }
 
     /**
+     * Return the total number of bytes for the TLV data
+     * @return the total number of bytes for the TLV data
+     */
+    uint32_t GetTotalLength() const { return mMaxLen; }
+
+    /**
+     * Returns the stored backing store.
+     *
+     * @return the stored backing store.
+     */
+    TLVBackingStore * GetBackingStore() { return mBackingStore; }
+
+    /**
      * Gets the point in the underlying input buffer that corresponds to the reader's current position.
      *
      * @note Depending on the type of the current element, GetReadPoint() will return a pointer that
@@ -936,7 +969,7 @@ protected:
     CHIP_ERROR SkipData();
     CHIP_ERROR SkipToEndOfContainer();
     CHIP_ERROR VerifyElement();
-    Tag ReadTag(TLVTagControl tagControl, const uint8_t *& p);
+    Tag ReadTag(TLVTagControl tagControl, const uint8_t *& p) const;
     CHIP_ERROR EnsureData(CHIP_ERROR noDataErr);
     CHIP_ERROR ReadData(uint8_t * buf, uint32_t len);
     CHIP_ERROR GetElementHeadLength(uint8_t & elemHeadBytes) const;
@@ -1159,7 +1192,7 @@ public:
     /**
      * Encodes a TLV signed integer value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1187,7 +1220,7 @@ public:
     /**
      * Encodes a TLV signed integer value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1249,7 +1282,7 @@ public:
     /**
      * Encodes a TLV unsigned integer value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag. Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1277,7 +1310,7 @@ public:
     /**
      * Encodes a TLV unsigned integer value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1339,7 +1372,7 @@ public:
     /**
      * Encodes a TLV floating point value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1372,7 +1405,7 @@ public:
     /**
      * Encodes a TLV byte string value using ByteSpan class.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1417,9 +1450,19 @@ public:
     }
 
     /**
+     *
+     * Encodes an unsigned integer with bits corresponding to the flags set when data is a BitMask
+     */
+    template <typename T>
+    CHIP_ERROR Put(Tag tag, BitMask<T> data)
+    {
+        return Put(tag, data.Raw());
+    }
+
+    /**
      * Encodes a TLV boolean value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1450,7 +1493,7 @@ public:
     CHIP_ERROR Put(Tag tag, bool v)
     {
         /*
-         * In TLV, boolean values are encoded as standalone tags without actual values, so we have a seperate
+         * In TLV, boolean values are encoded as standalone tags without actual values, so we have a separate
          * PutBoolean method.
          */
         return PutBoolean(tag, v);
@@ -1459,7 +1502,7 @@ public:
     /**
      * Encodes a TLV byte string value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1488,7 +1531,7 @@ public:
     /**
      * Encodes a TLV UTF8 string value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1516,7 +1559,7 @@ public:
     /**
      * Encodes a TLV UTF8 string value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1545,7 +1588,7 @@ public:
     /**
      * Encodes a TLV UTF8 string value that's passed in as a Span.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1596,7 +1639,7 @@ public:
      * temporary buffer to hold the output, using Platform::MemoryAlloc().
      *
      * @param[in] tag The TLV tag to be encoded with the value, or @p
-     *                AnonymousTag if the value should be encoded without
+     *                AnonymousTag() if the value should be encoded without
      *                a tag.  Tag values should be constructed with one of
      *                the tag definition functions ProfileTag(),
      *                ContextTag() or CommonTag().
@@ -1614,7 +1657,9 @@ public:
      *               `WriteElementHead` or `GetNewBuffer` -- failed, their
      *               error is immediately forwarded up the call stack.
      */
-    CHIP_ERROR PutStringF(Tag tag, const char * fmt, ...);
+    // The ENFORCE_FORMAT args are "off by one" because this is a class method,
+    // with an implicit "this" as first arg.
+    CHIP_ERROR PutStringF(Tag tag, const char * fmt, ...) ENFORCE_FORMAT(3, 4);
 
     /**
      * @brief
@@ -1642,7 +1687,7 @@ public:
      * temporary buffer to hold the output, using Platform::MemoryAlloc().
      *
      * @param[in] tag The TLV tag to be encoded with the value, or @p
-     *                AnonymousTag if the value should be encoded without
+     *                AnonymousTag() if the value should be encoded without
      *                a tag.  Tag values should be constructed with one of
      *                the tag definition functions ProfileTag(),
      *                ContextTag() or CommonTag().
@@ -1660,12 +1705,14 @@ public:
      *               `WriteElementHead` or `GetNewBuffer` -- failed, their
      *               error is immediately forwarded up the call stack.
      */
-    CHIP_ERROR VPutStringF(Tag tag, const char * fmt, va_list ap);
+    // The ENFORCE_FORMAT args are "off by one" because this is a class method,
+    // with an implicit "this" as first arg.
+    CHIP_ERROR VPutStringF(Tag tag, const char * fmt, va_list ap) ENFORCE_FORMAT(3, 0);
 
     /**
      * Encodes a TLV null value.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag if the
+     * @param[in]   tag             The TLV tag to be encoded with the value, or @p AnonymousTag() if the
      *                              value should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1747,7 +1794,7 @@ public:
      * input buffer that contains the entirety of the underlying TLV encoding. Supplying a reader in any
      * other mode has undefined behavior.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                              the container should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1795,7 +1842,7 @@ public:
      * write the elements of the container.  When finish, the application must call the EndContainer()
      * method to finish the encoding of the container.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                              the container should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1883,7 +1930,7 @@ public:
      * @note The StartContainer() method can be used as an alternative to OpenContainer() to write a
      * container element without initializing a new writer object.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                              the container should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -1959,7 +2006,7 @@ public:
      * The method encodes the entirety of the container element in one call.  When PutPreEncodedContainer()
      * returns, the writer object can be used to write additional TLV elements following the container element.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                              the container should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -2050,7 +2097,7 @@ public:
      * @note This method requires the supplied TVLReader object to be reading from a single, contiguous
      * input buffer that contains the entirety of the underlying TLV encoding.
      *
-     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in]   tag             The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                              the container should be encoded without a tag.  Tag values should be
      *                              constructed with one of the tag definition functions ProfileTag(),
      *                              ContextTag() or CommonTag().
@@ -2099,7 +2146,7 @@ public:
      * When the method returns, the writer object can be used to write additional TLV elements following
      * the container element.
      *
-     * @param[in] tag                   The TLV tag to be encoded with the container, or @p AnonymousTag if
+     * @param[in] tag                   The TLV tag to be encoded with the container, or @p AnonymousTag() if
      *                                  the container should be encoded without a tag.  Tag values should be
      *                                  constructed with one of the tag definition functions ProfileTag(),
      *                                  ContextTag() or CommonTag().
@@ -2364,7 +2411,7 @@ public:
      *                          implicit form.
      */
     void SetImplicitProfileId(uint32_t profileId);
-    uint32_t GetImplicitProfileId() { return mUpdaterReader.ImplicitProfileId; }
+    uint32_t GetImplicitProfileId() const { return mUpdaterReader.ImplicitProfileId; }
 
     /**
      * Copies the current element from input TLV to output TLV.
@@ -2604,7 +2651,7 @@ public:
     }
     CHIP_ERROR EndContainer(TLVType outerContainerType) { return mUpdaterWriter.EndContainer(outerContainerType); }
     uint32_t GetLengthWritten() { return mUpdaterWriter.GetLengthWritten(); }
-    uint32_t GetRemainingFreeLength() { return mUpdaterWriter.mRemainingLen; }
+    uint32_t GetRemainingFreeLength() const { return mUpdaterWriter.mRemainingLen; }
 
 private:
     void AdjustInternalWriterFreeSpace();

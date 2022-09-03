@@ -37,6 +37,9 @@ namespace DeviceLayer {
 class ConfigurationManagerImpl : public Internal::GenericConfigurationManagerImpl<Internal::PosixConfig>
 {
 public:
+    CHIP_ERROR StoreVendorId(uint16_t vendorId);
+    CHIP_ERROR StoreProductId(uint16_t productId);
+
     // This returns an instance of this class.
     static ConfigurationManagerImpl & GetDefaultInstance();
 
@@ -51,6 +54,8 @@ private:
     CHIP_ERROR WritePersistedStorageValue(::chip::Platform::PersistedStorage::Key key, uint32_t value) override;
 
     // NOTE: Other public interface methods are implemented by GenericConfigurationManagerImpl<>.
+    CHIP_ERROR WriteConfigValue(Key key, uint16_t val);
+    CHIP_ERROR ReadConfigValue(Key key, uint16_t & val);
 
     // ===== Members that implement the GenericConfigurationManagerImpl protected interface.
     CHIP_ERROR ReadConfigValue(Key key, bool & val) override;
@@ -66,6 +71,14 @@ private:
     CHIP_ERROR WriteConfigValueBin(Key key, const uint8_t * data, size_t dataLen) override;
     void RunConfigUnitTest(void) override;
 };
+
+/**
+ * Returns the platform-specific implementation of the ConfigurationManager object.
+ *
+ * Applications can use this to gain access to features of the ConfigurationManager
+ * that are specific to the selected platform.
+ */
+ConfigurationManager & ConfigurationMgrImpl();
 
 } // namespace DeviceLayer
 } // namespace chip

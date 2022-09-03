@@ -53,6 +53,8 @@ private:
     CHIP_ERROR ReadClusterRevision(EndpointId endpoint, AttributeValueEncoder & aEncoder);
 };
 
+constexpr uint16_t DescriptorAttrAccess::ClusterRevision;
+
 CHIP_ERROR DescriptorAttrAccess::ReadPartsAttribute(EndpointId endpoint, AttributeValueEncoder & aEncoder)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
@@ -77,7 +79,31 @@ CHIP_ERROR DescriptorAttrAccess::ReadPartsAttribute(EndpointId endpoint, Attribu
     }
     else
     {
-        err = aEncoder.Encode(DataModel::List<EndpointId>());
+        err = aEncoder.EncodeList([endpoint](const auto & encoder) -> CHIP_ERROR {
+            for (uint16_t index = 0; index < emberAfEndpointCount(); index++)
+            {
+                if (!emberAfEndpointIndexIsEnabled(index))
+                    continue;
+
+                uint16_t childIndex = index;
+                while (childIndex != chip::kInvalidListIndex)
+                {
+                    EndpointId parentEndpointId = emberAfParentEndpointFromIndex(childIndex);
+                    if (parentEndpointId == chip::kInvalidEndpointId)
+                        break;
+
+                    if (parentEndpointId == endpoint)
+                    {
+                        ReturnErrorOnFailure(encoder.Encode(emberAfEndpointFromIndex(index)));
+                        break;
+                    }
+
+                    childIndex = emberAfIndexFromEndpoint(parentEndpointId);
+                }
+            }
+
+            return CHIP_NO_ERROR;
+        });
     }
 
     return err;
@@ -87,11 +113,19 @@ CHIP_ERROR DescriptorAttrAccess::ReadDeviceAttribute(EndpointId endpoint, Attrib
 {
     CHIP_ERROR err = aEncoder.EncodeList([&endpoint](const auto & encoder) -> CHIP_ERROR {
         Descriptor::Structs::DeviceType::Type deviceStruct;
-        uint16_t index = emberAfIndexFromEndpoint(endpoint);
+        CHIP_ERROR err2;
 
-        deviceStruct.type     = emberAfDeviceIdFromIndex(index);
-        deviceStruct.revision = emberAfDeviceVersionFromIndex(index);
-        return encoder.Encode(deviceStruct);
+        auto deviceTypeList = emberAfDeviceTypeListFromEndpoint(endpoint, err2);
+        ReturnErrorOnFailure(err2);
+
+        for (auto & deviceType : deviceTypeList)
+        {
+            deviceStruct.type     = deviceType.deviceId;
+            deviceStruct.revision = deviceType.deviceVersion;
+            ReturnErrorOnFailure(encoder.Encode(deviceStruct));
+        }
+
+        return CHIP_NO_ERROR;
     });
 
     return err;
@@ -100,11 +134,11 @@ CHIP_ERROR DescriptorAttrAccess::ReadDeviceAttribute(EndpointId endpoint, Attrib
 CHIP_ERROR DescriptorAttrAccess::ReadClientServerAttribute(EndpointId endpoint, AttributeValueEncoder & aEncoder, bool server)
 {
     CHIP_ERROR err = aEncoder.EncodeList([&endpoint, server](const auto & encoder) -> CHIP_ERROR {
-        uint16_t clusterCount = emberAfClusterCount(endpoint, server);
+        uint8_t clusterCount = emberAfClusterCount(endpoint, server);
 
         for (uint8_t clusterIndex = 0; clusterIndex < clusterCount; clusterIndex++)
         {
-            EmberAfCluster * cluster = emberAfGetNthCluster(endpoint, clusterIndex, server);
+            const EmberAfCluster * cluster = emberAfGetNthCluster(endpoint, clusterIndex, server);
             ReturnErrorOnFailure(encoder.Encode(cluster->clusterId));
         }
 

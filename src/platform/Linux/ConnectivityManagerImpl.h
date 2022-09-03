@@ -20,6 +20,10 @@
 
 #include <platform/ConnectivityManager.h>
 #include <platform/internal/GenericConnectivityManagerImpl.h>
+#include <platform/internal/GenericConnectivityManagerImpl_UDP.h>
+#if INET_CONFIG_ENABLE_TCP_ENDPOINT
+#include <platform/internal/GenericConnectivityManagerImpl_TCP.h>
+#endif
 #if CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
 #include <platform/internal/GenericConnectivityManagerImpl_BLE.h>
 #else
@@ -41,7 +45,13 @@
 #include <platform/Linux/dbus/wpa/DBusWpaBss.h>
 #include <platform/Linux/dbus/wpa/DBusWpaInterface.h>
 #include <platform/Linux/dbus/wpa/DBusWpaNetwork.h>
+
+#include <mutex>
 #endif
+
+#include <platform/Linux/NetworkCommissioningDriver.h>
+#include <platform/NetworkCommissioning.h>
+#include <vector>
 
 namespace chip {
 namespace Inet {
@@ -99,6 +109,10 @@ class ConnectivityManagerImpl final : public ConnectivityManager,
 #else
                                       public Internal::GenericConnectivityManagerImpl_NoWiFi<ConnectivityManagerImpl>,
 #endif
+                                      public Internal::GenericConnectivityManagerImpl_UDP<ConnectivityManagerImpl>,
+#if INET_CONFIG_ENABLE_TCP_ENDPOINT
+                                      public Internal::GenericConnectivityManagerImpl_TCP<ConnectivityManagerImpl>,
+#endif
                                       public Internal::GenericConnectivityManagerImpl<ConnectivityManagerImpl>
 {
     // Allow the ConnectivityManager interface class to delegate method calls to
@@ -108,11 +122,25 @@ class ConnectivityManagerImpl final : public ConnectivityManager,
 public:
 #if CHIP_DEVICE_CONFIG_ENABLE_WPA
     CHIP_ERROR ProvisionWiFiNetwork(const char * ssid, const char * key);
+    void
+    SetNetworkStatusChangeCallback(NetworkCommissioning::Internal::BaseDriver::NetworkStatusChangeCallback * statusChangeCallback)
+    {
+        mpStatusChangeCallback = statusChangeCallback;
+    }
+    CHIP_ERROR ConnectWiFiNetworkAsync(ByteSpan ssid, ByteSpan credentials,
+                                       NetworkCommissioning::Internal::WirelessDriver::ConnectCallback * connectCallback);
+    void PostNetworkConnect();
+    static void _ConnectWiFiNetworkAsyncCallback(GObject * source_object, GAsyncResult * res, gpointer user_data);
+    CHIP_ERROR CommitConfig();
+
     void StartWiFiManagement();
     bool IsWiFiManagementStarted();
+    int32_t GetDisconnectReason();
     CHIP_ERROR GetWiFiBssId(ByteSpan & value);
     CHIP_ERROR GetWiFiSecurityType(uint8_t & securityType);
     CHIP_ERROR GetWiFiVersion(uint8_t & wiFiVersion);
+    CHIP_ERROR GetConfiguredNetwork(NetworkCommissioning::Network & network);
+    CHIP_ERROR StartWiFiScan(ByteSpan ssid, NetworkCommissioning::WiFiDriver::ScanCallback * callback);
 #endif
 
     const char * GetEthernetIfName() { return (mEthIfName[0] == '\0') ? nullptr : mEthIfName; }
@@ -123,6 +151,18 @@ public:
 
 private:
     // ===== Members that implement the ConnectivityManager abstract interface.
+
+    struct WiFiNetworkScanned
+    {
+        // The fields matches WiFiInterfaceScanResult::Type.
+        uint8_t ssid[Internal::kMaxWiFiSSIDLength];
+        uint8_t ssidLen;
+        uint8_t bssid[6];
+        int8_t rssi;
+        uint16_t frequencyBand;
+        uint8_t channel;
+        uint8_t security;
+    };
 
     CHIP_ERROR _Init();
     void _OnPlatformEvent(const ChipDeviceEvent * event);
@@ -148,18 +188,28 @@ private:
     void _MaintainOnDemandWiFiAP();
     System::Clock::Timeout _GetWiFiAPIdleTimeout();
     void _SetWiFiAPIdleTimeout(System::Clock::Timeout val);
+    void UpdateNetworkStatus();
+    static CHIP_ERROR StopAutoScan();
 
     static void _OnWpaProxyReady(GObject * source_object, GAsyncResult * res, gpointer user_data);
     static void _OnWpaInterfaceRemoved(WpaFiW1Wpa_supplicant1 * proxy, const gchar * path, GVariant * properties,
                                        gpointer user_data);
     static void _OnWpaInterfaceAdded(WpaFiW1Wpa_supplicant1 * proxy, const gchar * path, GVariant * properties, gpointer user_data);
+    static void _OnWpaPropertiesChanged(WpaFiW1Wpa_supplicant1Interface * proxy, GVariant * changed_properties,
+                                        const gchar * const * invalidated_properties, gpointer user_data);
     static void _OnWpaInterfaceReady(GObject * source_object, GAsyncResult * res, gpointer user_data);
     static void _OnWpaInterfaceProxyReady(GObject * source_object, GAsyncResult * res, gpointer user_data);
     static void _OnWpaBssProxyReady(GObject * source_object, GAsyncResult * res, gpointer user_data);
+    static void _OnWpaInterfaceScanDone(GObject * source_object, GAsyncResult * res, gpointer user_data);
 
+    static bool _GetBssInfo(const gchar * bssPath, NetworkCommissioning::WiFiScanResponse & result);
+
+    static bool mAssociattionStarted;
     static BitFlags<ConnectivityFlags> mConnectivityFlag;
     static struct GDBusWpaSupplicant mWpaSupplicant;
     static std::mutex mWpaSupplicantMutex;
+
+    NetworkCommissioning::Internal::BaseDriver::NetworkStatusChangeCallback * mpStatusChangeCallback = nullptr;
 #endif
 
     // ==================== ConnectivityManager Private Methods ====================
@@ -194,6 +244,11 @@ private:
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
     static char sWiFiIfName[IFNAMSIZ];
 #endif
+
+    static uint8_t sInterestedSSID[Internal::kMaxWiFiSSIDLength];
+    static uint8_t sInterestedSSIDLen;
+    static NetworkCommissioning::WiFiDriver::ScanCallback * mpScanCallback;
+    static NetworkCommissioning::Internal::WirelessDriver::ConnectCallback * mpConnectCallback;
 };
 
 #if CHIP_DEVICE_CONFIG_ENABLE_WPA

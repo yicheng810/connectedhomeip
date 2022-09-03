@@ -1,16 +1,33 @@
 /*
- * $ Copyright 2021-YEAR Cypress Semiconductor $
+ *
+ *    Copyright (c) 2021 Project CHIP Authors
+ *    Copyright (c) 2019 Google LLC.
+ *    Copyright 2021, Cypress Semiconductor Corporation (an Infineon company)
+ *    All rights reserved.
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
  */
 
-/*
- * @app_button.cpp : Application's Button-list entries
- */
 #include <ButtonHandler.h>
 #include <LightingManager.h>
+#include <app-common/zap-generated/attributes/Accessors.h>
+#include <platform/CHIPDeviceLayer.h>
 #include <stdio.h>
 #include <wiced.h>
 #include <wiced_button_manager.h>
 #include <wiced_platform.h>
+
+using namespace chip::app::Clusters;
 
 /******************************************************
  *                      Macros
@@ -43,7 +60,7 @@ wiced_result_t app_button_init(void)
     memset(app_buttons, 0, (sizeof(button_manager_button_t) * APP_MAX_BUTTON_DEF));
 
     app_button_configurations[ON_OFF_BUTTON].button            = PLATFORM_BUTTON_1;
-    app_button_configurations[ON_OFF_BUTTON].button_event_mask = BUTTON_CLICK_EVENT;
+    app_button_configurations[ON_OFF_BUTTON].button_event_mask = BUTTON_CLICK_EVENT | BUTTON_HOLDING_EVENT;
     app_buttons[ON_OFF_BUTTON].configuration                   = &app_button_configurations[ON_OFF_BUTTON];
 
     result = wiced_button_manager_init(&app_button_manager, &app_button_manager_configuration, app_buttons, 1);
@@ -58,9 +75,7 @@ wiced_result_t app_button_init(void)
 void app_button_event_handler(const button_manager_button_t * button_mgr, button_manager_event_t event,
                               button_manager_button_state_t state)
 {
-    // printf("app_button_event_handler. button=%d, event=%d, state=%d\n", button_mgr[ON_OFF_BUTTON].configuration->button, event,
-    // state);
-
+    uint8_t attributeValue;
     if (button_mgr[0].configuration->button == PLATFORM_BUTTON_1 && event == BUTTON_CLICK_EVENT && state == BUTTON_STATE_RELEASED)
     {
         if (LightMgr().IsLightOn())
@@ -73,5 +88,12 @@ void app_button_event_handler(const button_manager_button_t * button_mgr, button
             printf("Button Toggle:OFF -> ON\n");
             LightMgr().InitiateAction(LightingManager::ACTOR_BUTTON, LightingManager::ON_ACTION, 0);
         }
+    }
+    else if (button_mgr[0].configuration->button == PLATFORM_BUTTON_1 && event == BUTTON_HOLDING_EVENT)
+    {
+        // update the current occupancy here for hardcoded endpoint 1
+        OccupancySensing::Attributes::Occupancy::Get(1, &attributeValue);
+        printf("Button Holding Toggle: %d -> %d\n", attributeValue, !attributeValue);
+        OccupancySensing::Attributes::Occupancy::Set(1, !attributeValue);
     }
 }

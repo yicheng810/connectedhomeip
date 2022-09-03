@@ -15,6 +15,7 @@
 name: Descriptor Cluster Tests
 
 config:
+    nodeId: 0x12344321
     cluster: "Descriptor"
     endpoint: 0
 
@@ -22,6 +23,10 @@ tests:
     - label: "Wait for the commissioned device to be retrieved"
       cluster: "DelayCommands"
       command: "WaitForCommissionee"
+      arguments:
+          values:
+              - name: "nodeId"
+                value: nodeId
 
     - label: "Read attribute Device list"
       command: "readAttribute"
@@ -35,13 +40,17 @@ tests:
       response:
           value: [
                   0x0003, # Identify
+                  0x0004, # Groups
                   0x001D, # Descriptor
                   0x001E, # Binding
                   0x001F, # Access Control
                   0x0028, # Basic Information
-                  0x0029, # OTA Software Update Provider
                   0x002A, # OTA Software Update Requestor
+                  0x002B, # Localization Configuration
+                  0x002C, # Time Format Localization
+                  0x002D, # Unit Localization
                   0x002E, # Power Source Configuration
+                  0x002F, # Power Source
                   0x0030, # General Commissioning
                   0x0031, # Network Commissioning
                   0x0032, # Diagnostic Logs
@@ -53,6 +62,8 @@ tests:
                   0x003C, # Administrator Commissioning
                   0x003E, # Operational Credentials
                   0x003F, # Group Key Management
+                  0x0040, # Fixed Label
+                  0x0041, # User Label
                   0x0405, # Relative Humidity Measurement (why on EP0?)
               ]
 

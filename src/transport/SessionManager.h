@@ -27,17 +27,23 @@
 
 #include <utility>
 
+#include <credentials/FabricTable.h>
+#include <crypto/RandUtils.h>
 #include <inet/IPAddress.h>
 #include <lib/core/CHIPCore.h>
+#include <lib/core/CHIPPersistentStorageDelegate.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/DLLUtil.h>
 #include <messaging/ReliableMessageProtocolConfig.h>
 #include <protocols/secure_channel/Constants.h>
 #include <transport/CryptoContext.h>
+#include <transport/GroupPeerMessageCounter.h>
+#include <transport/GroupSession.h>
 #include <transport/MessageCounterManagerInterface.h>
 #include <transport/SecureSessionTable.h>
 #include <transport/SessionDelegate.h>
 #include <transport/SessionHandle.h>
+#include <transport/SessionHolder.h>
 #include <transport/SessionMessageDelegate.h>
 #include <transport/TransportMgr.h>
 #include <transport/UnauthenticatedSessionTable.h>
@@ -46,8 +52,6 @@
 #include <transport/raw/Tuple.h>
 
 namespace chip {
-
-class PairingSession;
 
 /**
  * @brief
@@ -116,7 +120,7 @@ private:
     EncryptedPacketBufferHandle(PacketBufferHandle && aBuffer) : PacketBufferHandle(std::move(aBuffer)) {}
 };
 
-class DLL_EXPORT SessionManager : public TransportMgrDelegate
+class DLL_EXPORT SessionManager : public TransportMgrDelegate, public FabricTable::Delegate
 {
 public:
     SessionManager();
@@ -133,90 +137,237 @@ public:
      *    3. Encode the packet header and prepend it to message.
      *   Returns a encrypted message in encryptedMessage.
      */
-    CHIP_ERROR PrepareMessage(SessionHandle session, PayloadHeader & payloadHeader, System::PacketBufferHandle && msgBuf,
+    CHIP_ERROR PrepareMessage(const SessionHandle & session, PayloadHeader & payloadHeader, System::PacketBufferHandle && msgBuf,
                               EncryptedPacketBufferHandle & encryptedMessage);
 
     /**
      * @brief
      *   Send a prepared message to a currently connected peer.
      */
-    CHIP_ERROR SendPreparedMessage(SessionHandle session, const EncryptedPacketBufferHandle & preparedMessage);
-
-    Transport::SecureSession * GetSecureSession(SessionHandle session);
+    CHIP_ERROR SendPreparedMessage(const SessionHandle & session, const EncryptedPacketBufferHandle & preparedMessage);
 
     /// @brief Set the delegate for handling incoming messages. There can be only one message delegate (probably the
     /// ExchangeManager)
     void SetMessageDelegate(SessionMessageDelegate * cb) { mCB = cb; }
 
-    /// @brief Set the delegate for handling session creation.
-    void RegisterCreationDelegate(SessionCreationDelegate & cb)
-    {
-#ifndef NDEBUG
-        mSessionCreationDelegates.ForEachActiveObject([&](std::reference_wrapper<SessionCreationDelegate> * i) {
-            VerifyOrDie(std::addressof(cb) != std::addressof(i->get()));
-            return Loop::Continue;
-        });
-#endif
-        std::reference_wrapper<SessionCreationDelegate> * slot = mSessionCreationDelegates.CreateObject(cb);
-        VerifyOrDie(slot != nullptr);
-    }
-
-    void UnregisterCreationDelegate(SessionCreationDelegate & cb)
-    {
-        mSessionCreationDelegates.ForEachActiveObject([&](std::reference_wrapper<SessionCreationDelegate> * i) {
-            if (std::addressof(cb) == std::addressof(i->get()))
-            {
-                mSessionCreationDelegates.ReleaseObject(i);
-                return Loop::Break;
-            }
-            return Loop::Continue;
-        });
-    }
-
-    /// @brief Set the delegate for handling session release.
-    void RegisterReleaseDelegate(SessionReleaseDelegate & cb)
-    {
-#ifndef NDEBUG
-        mSessionReleaseDelegates.ForEachActiveObject([&](std::reference_wrapper<SessionReleaseDelegate> * i) {
-            VerifyOrDie(std::addressof(cb) != std::addressof(i->get()));
-            return Loop::Continue;
-        });
-#endif
-        std::reference_wrapper<SessionReleaseDelegate> * slot = mSessionReleaseDelegates.CreateObject(cb);
-        VerifyOrDie(slot != nullptr);
-    }
-
-    void UnregisterReleaseDelegate(SessionReleaseDelegate & cb)
-    {
-        mSessionReleaseDelegates.ForEachActiveObject([&](std::reference_wrapper<SessionReleaseDelegate> * i) {
-            if (std::addressof(cb) == std::addressof(i->get()))
-            {
-                mSessionReleaseDelegates.ReleaseObject(i);
-                return Loop::Break;
-            }
-            return Loop::Continue;
-        });
-    }
-
-    void RegisterRecoveryDelegate(SessionRecoveryDelegate & cb);
-    void UnregisterRecoveryDelegate(SessionRecoveryDelegate & cb);
-    void RefreshSessionOperationalData(const SessionHandle & sessionHandle);
+    // Test-only: create a session on the fly.
+    CHIP_ERROR InjectPaseSessionWithTestKey(SessionHolder & sessionHolder, uint16_t localSessionId, NodeId peerNodeId,
+                                            uint16_t peerSessionId, FabricIndex fabricIndex,
+                                            const Transport::PeerAddress & peerAddress, CryptoContext::SessionRole role);
+    CHIP_ERROR InjectCaseSessionWithTestKey(SessionHolder & sessionHolder, uint16_t localSessionId, uint16_t peerSessionId,
+                                            NodeId localNodeId, NodeId peerNodeId, FabricIndex fabric,
+                                            const Transport::PeerAddress & peerAddress, CryptoContext::SessionRole role,
+                                            const CATValues & cats = CATValues{});
 
     /**
      * @brief
-     *   Establish a new pairing with a peer node
+     *   Allocate a secure session and non-colliding session ID in the secure
+     *   session table.
      *
-     * @details
-     *   This method sets up a new pairing with the peer node. It also
-     *   establishes the security keys for secure communication with the
-     *   peer node.
+     *   If we're either establishing or just finished establishing a session to a peer in either initiator or responder
+     *   roles, the node id of that peer should be provided in sessionEvictionHint. Else, it should be initialized
+     *   to a default-constructed ScopedNodeId().
+     *
+     * @return SessionHandle with a reference to a SecureSession, else NullOptional on failure
      */
-    CHIP_ERROR NewPairing(const Optional<Transport::PeerAddress> & peerAddr, NodeId peerNodeId, PairingSession * pairing,
-                          CryptoContext::SessionRole direction, FabricIndex fabric);
+    CHECK_RETURN_VALUE
+    Optional<SessionHandle> AllocateSession(Transport::SecureSession::Type secureSessionType,
+                                            const ScopedNodeId & sessionEvictionHint);
 
-    void ExpirePairing(SessionHandle session);
-    void ExpireAllPairings(NodeId peerNodeId, FabricIndex fabric);
-    void ExpireAllPairingsForFabric(FabricIndex fabric);
+    /**
+     *  A set of templated helper function that call a provided lambda
+     *  on all sessions in the underlying session table that match the provided
+     *  query criteria.
+     *
+     */
+
+    /**
+     * Call the provided lambda on sessions whose remote side match the provided ScopedNodeId.
+     *
+     */
+    template <typename Function>
+    void ForEachMatchingSession(const ScopedNodeId & node, Function && function)
+    {
+        mSecureSessions.ForEachSession([&](auto * session) {
+            if (session->GetPeer() == node)
+            {
+                function(session);
+            }
+
+            return Loop::Continue;
+        });
+    }
+
+    /**
+     * Call the provided lambda on sessions that match the provided fabric index.
+     *
+     */
+    template <typename Function>
+    void ForEachMatchingSession(FabricIndex fabricIndex, Function && function)
+    {
+        mSecureSessions.ForEachSession([&](auto * session) {
+            if (session->GetFabricIndex() == fabricIndex)
+            {
+                function(session);
+            }
+
+            return Loop::Continue;
+        });
+    }
+
+    /**
+     * Call the provided lambda on all sessions whose remote side match the logical fabric
+     * associated with the provided ScopedNodeId and target the same logical remote node.
+     *
+     * *NOTE* This is identical in behavior to ForEachMatchingSession(const ScopedNodeId ..)
+     *        EXCEPT if there are multiple FabricInfo instances in the FabricTable that collide
+     *        on the same logical fabric (i.e root public key + fabric ID tuple).
+     *        This can ONLY happen if multiple controller instances on the same fabric is permitted
+     *        and each is assigned a unique fabric index.
+     */
+    template <typename Function>
+    CHIP_ERROR ForEachMatchingSessionOnLogicalFabric(const ScopedNodeId & node, Function && function)
+    {
+        Crypto::P256PublicKey targetPubKey;
+
+        auto * targetFabric = mFabricTable->FindFabricWithIndex(node.GetFabricIndex());
+        VerifyOrReturnError(targetFabric != nullptr, CHIP_ERROR_INVALID_FABRIC_INDEX);
+
+        auto err = targetFabric->FetchRootPubkey(targetPubKey);
+        VerifyOrDie(err == CHIP_NO_ERROR);
+
+        mSecureSessions.ForEachSession([&](auto * session) {
+            Crypto::P256PublicKey comparePubKey;
+
+            //
+            // It's entirely possible to either come across a PASE session OR, a CASE session
+            // that has yet to be activated (i.e a CASEServer holding onto a SecureSession object
+            // waiting for a Sigma1 message to arrive). Let's skip those.
+            //
+            if (!session->IsCASESession() || session->GetFabricIndex() == kUndefinedFabricIndex)
+            {
+                return Loop::Continue;
+            }
+
+            auto * compareFabric = mFabricTable->FindFabricWithIndex(session->GetFabricIndex());
+            VerifyOrDie(compareFabric != nullptr);
+
+            err = compareFabric->FetchRootPubkey(comparePubKey);
+            VerifyOrDie(err == CHIP_NO_ERROR);
+
+            if (comparePubKey.Matches(targetPubKey) && targetFabric->GetFabricId() == compareFabric->GetFabricId() &&
+                session->GetPeerNodeId() == node.GetNodeId())
+            {
+                function(session);
+            }
+
+            return Loop::Continue;
+        });
+
+        return CHIP_NO_ERROR;
+    }
+
+    /**
+     * Call the provided lambda on all sessions that match the logical fabric
+     * associated with the provided fabric index.
+     *
+     * *NOTE* This is identical in behavior to ForEachMatchingSession(FabricIndex ..)
+     *        EXCEPT if there are multiple FabricInfo instances in the FabricTable that collide
+     *        on the same logical fabric (i.e root public key + fabric ID tuple).
+     *        This can ONLY happen if multiple controller instances on the same fabric is permitted
+     *        and each is assigned a unique fabric index.
+     */
+    template <typename Function>
+    CHIP_ERROR ForEachMatchingSessionOnLogicalFabric(FabricIndex fabricIndex, Function && function)
+    {
+        Crypto::P256PublicKey targetPubKey;
+
+        auto * targetFabric = mFabricTable->FindFabricWithIndex(fabricIndex);
+        VerifyOrReturnError(targetFabric != nullptr, CHIP_ERROR_INVALID_FABRIC_INDEX);
+
+        auto err = targetFabric->FetchRootPubkey(targetPubKey);
+        VerifyOrDie(err == CHIP_NO_ERROR);
+
+        mSecureSessions.ForEachSession([&](auto * session) {
+            Crypto::P256PublicKey comparePubKey;
+
+            //
+            // It's entirely possible to either come across a PASE session OR, a CASE session
+            // that has yet to be activated (i.e a CASEServer holding onto a SecureSession object
+            // waiting for a Sigma1 message to arrive). Let's skip those.
+            //
+            if (!session->IsCASESession() || session->GetFabricIndex() == kUndefinedFabricIndex)
+            {
+                return Loop::Continue;
+            }
+
+            auto * compareFabric = mFabricTable->FindFabricWithIndex(session->GetFabricIndex());
+            VerifyOrDie(compareFabric != nullptr);
+
+            err = compareFabric->FetchRootPubkey(comparePubKey);
+            VerifyOrDie(err == CHIP_NO_ERROR);
+
+            if (comparePubKey.Matches(targetPubKey) && targetFabric->GetFabricId() == compareFabric->GetFabricId())
+            {
+                function(session);
+            }
+
+            return Loop::Continue;
+        });
+
+        return CHIP_NO_ERROR;
+    }
+
+    void ExpireAllSessions(const ScopedNodeId & node);
+    void ExpireAllSessionsForFabric(FabricIndex fabricIndex);
+
+    /**
+     * Expire all sessions whose remote side matches the logical fabric
+     * associated with the provided ScopedNodeId and target the same logical remote node.
+     *
+     * *NOTE* This is identical in behavior to ExpireAllSessions(const ScopedNodeId ..)
+     *        EXCEPT if there are multiple FabricInfo instances in the FabricTable that collide
+     *        on the same logical fabric (i.e root public key + fabric ID tuple).  This can ONLY happen
+     *        if multiple controller instances on the same fabric is permitted and each is assigned
+     *        a unique fabric index.
+     *
+     */
+    CHIP_ERROR ExpireAllSessionsOnLogicalFabric(const ScopedNodeId & node);
+
+    /**
+     * Expire all sessions whose remote side matches the logical fabric
+     * associated with the provided fabric index.
+     *
+     * *NOTE* This is identical in behavior to ExpireAllSessExpireAllSessionsForFabricions(FabricIndex ..)
+     *        EXCEPT if there are multiple FabricInfo instances in the FabricTable that collide
+     *        on the same logical fabric (i.e root public key + fabric ID tuple).  This can ONLY happen
+     *        if multiple controller instances on the same fabric is permitted and each is assigned
+     *        a unique fabric index.
+     *
+     */
+    CHIP_ERROR ExpireAllSessionsOnLogicalFabric(FabricIndex fabricIndex);
+
+    void ExpireAllPASESessions();
+
+    /**
+     * @brief
+     *   Marks all active sessions that match provided arguments as defunct.
+     *
+     * @param node    Scoped node ID of the active sessions we should mark as defunct.
+     * @param type    Type of session we are looking to mark as defunct. If matching
+     *                against all types of sessions is desired, NullOptional should
+     *                be passed into type.
+     */
+    void MarkSessionsAsDefunct(const ScopedNodeId & node, const Optional<Transport::SecureSession::Type> & type);
+
+    /**
+     * @brief
+     *   Update all CASE sessions that match `node` with the provided transport peer address.
+     *
+     * @param node    Scoped node ID of the active sessions we want to update.
+     * @param addr    Transport peer address that we want to update to.
+     */
+    void UpdateAllSessionsPeerAddress(const ScopedNodeId & node, const Transport::PeerAddress & addr);
 
     /**
      * @brief
@@ -233,7 +384,8 @@ public:
      * @param messageCounterManager The message counter manager
      */
     CHIP_ERROR Init(System::Layer * systemLayer, TransportMgrBase * transportMgr,
-                    Transport::MessageCounterManagerInterface * messageCounterManager);
+                    Transport::MessageCounterManagerInterface * messageCounterManager,
+                    chip::PersistentStorageDelegate * storageDelegate, FabricTable * fabricTable);
 
     /**
      * @brief
@@ -242,7 +394,13 @@ public:
      */
     void Shutdown();
 
+    /**
+     * @brief Notification that a fabric was removed.
+     */
+    void FabricRemoved(FabricIndex fabricIndex);
+
     TransportMgrBase * GetTransportManager() const { return mTransportMgr; }
+    Transport::SecureSessionTable & GetSecureSessions() { return mSecureSessions; }
 
     /**
      * @brief
@@ -256,13 +414,35 @@ public:
     Optional<SessionHandle> CreateUnauthenticatedSession(const Transport::PeerAddress & peerAddress,
                                                          const ReliableMessageProtocolConfig & config)
     {
-        Optional<Transport::UnauthenticatedSessionHandle> session =
-            mUnauthenticatedSessions.FindOrAllocateEntry(peerAddress, config);
-        return session.HasValue() ? MakeOptional<SessionHandle>(session.Value()) : NullOptional;
+        // Allocate ephemeralInitiatorNodeID in Operational Node ID range
+        NodeId ephemeralInitiatorNodeID;
+        do
+        {
+            ephemeralInitiatorNodeID = static_cast<NodeId>(Crypto::GetRandU64());
+        } while (!IsOperationalNodeId(ephemeralInitiatorNodeID));
+        return mUnauthenticatedSessions.AllocInitiator(ephemeralInitiatorNodeID, peerAddress, config);
     }
 
-    // TODO: this is a temporary solution for legacy tests which use nodeId to send packets
-    SessionHandle FindSecureSessionForNode(NodeId peerNodeId);
+    //
+    // Find an existing secure session given a peer's scoped NodeId and a type of session to match against.
+    // If matching against all types of sessions is desired, NullOptional should be passed into type.
+    //
+    // If a valid session is found, an Optional<SessionHandle> with the value set to the SessionHandle of the session
+    // is returned. Otherwise, an Optional<SessionHandle> with no value set is returned.
+    //
+    //
+    Optional<SessionHandle> FindSecureSessionForNode(ScopedNodeId peerNodeId,
+                                                     const Optional<Transport::SecureSession::Type> & type = NullOptional);
+
+    using SessionHandleCallback = bool (*)(void * context, SessionHandle & sessionHandle);
+    CHIP_ERROR ForEachSessionHandle(void * context, SessionHandleCallback callback);
+
+    //// FabricTable::Delegate Implementation ////
+    void OnFabricRemoved(const FabricTable & fabricTable, FabricIndex fabricIndex) override
+    {
+        (void) fabricTable;
+        this->FabricRemoved(fabricIndex);
+    }
 
 private:
     /**
@@ -281,47 +461,18 @@ private:
     };
 
     System::Layer * mSystemLayer = nullptr;
+    FabricTable * mFabricTable   = nullptr;
     Transport::UnauthenticatedSessionTable<CHIP_CONFIG_UNAUTHENTICATED_CONNECTION_POOL_SIZE> mUnauthenticatedSessions;
-    Transport::SecureSessionTable<CHIP_CONFIG_PEER_CONNECTION_POOL_SIZE> mSecureSessions; // < Active connections to other peers
-    State mState;                                                                         // < Initialization state of the object
+    Transport::SecureSessionTable mSecureSessions;
+    State mState; // < Initialization state of the object
+    chip::Transport::GroupOutgoingCounters mGroupClientCounter;
 
     SessionMessageDelegate * mCB = nullptr;
-    BitMapObjectPool<std::reference_wrapper<SessionCreationDelegate>, CHIP_CONFIG_MAX_SESSION_CREATION_DELEGATES,
-                     OnObjectPoolDestruction::IgnoreUnsafeDoNotUseInNewCode>
-        mSessionCreationDelegates;
-
-    // TODO: This is a temporary solution to release sessions, in the near future, SessionReleaseDelegate will be
-    //       directly associated with the every SessionHandle. Then the callback function is called on over the handle
-    //       delegate directly, in order to prevent dangling handles.
-    BitMapObjectPool<std::reference_wrapper<SessionReleaseDelegate>, CHIP_CONFIG_MAX_SESSION_RELEASE_DELEGATES,
-                     OnObjectPoolDestruction::IgnoreUnsafeDoNotUseInNewCode>
-        mSessionReleaseDelegates;
-
-    BitMapObjectPool<std::reference_wrapper<SessionRecoveryDelegate>, CHIP_CONFIG_MAX_SESSION_RECOVERY_DELEGATES,
-                     OnObjectPoolDestruction::IgnoreUnsafeDoNotUseInNewCode>
-        mSessionRecoveryDelegates;
 
     TransportMgrBase * mTransportMgr                                   = nullptr;
     Transport::MessageCounterManagerInterface * mMessageCounterManager = nullptr;
 
     GlobalUnencryptedMessageCounter mGlobalUnencryptedMessageCounter;
-    GlobalEncryptedMessageCounter mGlobalEncryptedMessageCounter;
-
-    /** Schedules a new oneshot timer for checking connection expiry. */
-    void ScheduleExpiryTimer();
-
-    /** Cancels any active timers for connection expiry checks. */
-    void CancelExpiryTimer();
-
-    /**
-     * Called when a specific connection expires.
-     */
-    void HandleConnectionExpired(const Transport::SecureSession & state);
-
-    /**
-     * Callback for timer expiry check
-     */
-    static void ExpiryTimerCallback(System::Layer * layer, void * param);
 
     void SecureUnicastMessageDispatch(const PacketHeader & packetHeader, const Transport::PeerAddress & peerAddress,
                                       System::PacketBufferHandle && msg);
@@ -329,8 +480,8 @@ private:
     void SecureGroupMessageDispatch(const PacketHeader & packetHeader, const Transport::PeerAddress & peerAddress,
                                     System::PacketBufferHandle && msg);
 
-    void MessageDispatch(const PacketHeader & packetHeader, const Transport::PeerAddress & peerAddress,
-                         System::PacketBufferHandle && msg);
+    void UnauthenticatedMessageDispatch(const PacketHeader & packetHeader, const Transport::PeerAddress & peerAddress,
+                                        System::PacketBufferHandle && msg);
 
     void OnReceiveError(CHIP_ERROR error, const Transport::PeerAddress & source);
 
@@ -338,18 +489,6 @@ private:
     {
         return payloadHeader.HasMessageType(Protocols::SecureChannel::MsgType::MsgCounterSyncReq) ||
             payloadHeader.HasMessageType(Protocols::SecureChannel::MsgType::MsgCounterSyncRsp);
-    }
-
-    MessageCounter & GetSendCounterForPacket(PayloadHeader & payloadHeader, Transport::SecureSession & state)
-    {
-        if (IsControlMessage(payloadHeader))
-        {
-            return mGlobalEncryptedMessageCounter;
-        }
-        else
-        {
-            return state.GetSessionMessageCounter().GetLocalMessageCounter();
-        }
     }
 };
 

@@ -18,11 +18,19 @@
 
 #pragma once
 
+#include <app/util/attribute-storage-null-handling.h>
 #include <lib/core/Optional.h>
+
+#include <type_traits>
 
 namespace chip {
 namespace app {
 namespace DataModel {
+
+/**
+ * NullNullable is an alias for NullOptional, for better readability.
+ */
+constexpr auto NullNullable = NullOptional;
 
 /*
  * Dedicated type for nullable things, to differentiate them from optional
@@ -41,6 +49,9 @@ struct Nullable : protected Optional<T>
     // Optional.
     using Optional<T>::Value;
 
+    // Some consumers need an easy way to determine our underlying type.
+    using UnderlyingType = T;
+
     constexpr void SetNull() { Optional<T>::ClearValue(); }
     constexpr bool IsNull() const { return !Optional<T>::HasValue(); }
 
@@ -49,6 +60,30 @@ struct Nullable : protected Optional<T>
     {
         return Optional<T>::Emplace(std::forward<Args>(args)...);
     }
+
+    // For integer types, being nullable involves a range restriction.
+    template <
+        typename U = std::decay_t<T>,
+        typename std::enable_if_t<(std::is_integral<U>::value && !std::is_same<U, bool>::value) || std::is_enum<U>::value, int> = 0>
+    constexpr bool HasValidValue() const
+    {
+        return NumericAttributeTraits<T>::CanRepresentValue(/* isNullable = */ true, Value());
+    }
+
+    // For all other types, all values are valid.
+    template <typename U                     = std::decay_t<T>,
+              typename std::enable_if_t<(!std::is_integral<U>::value || std::is_same<U, bool>::value) && !std::is_enum<U>::value,
+                                        int> = 0>
+    constexpr bool HasValidValue() const
+    {
+        return true;
+    }
+
+    // The only fabric-scoped objects in the spec are commands, events and structs inside lists, and none of those can be nullable.
+    static constexpr bool kIsFabricScoped = false;
+
+    bool operator==(const Nullable & other) const { return Optional<T>::operator==(other); }
+    bool operator!=(const Nullable & other) const { return !(*this == other); }
 };
 
 } // namespace DataModel

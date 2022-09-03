@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "fsl_os_abstraction.h"
 #include <platform/internal/GenericPlatformManagerImpl_FreeRTOS.h>
 
 namespace chip {
@@ -48,18 +49,33 @@ class PlatformManagerImpl final : public PlatformManager, public Internal::Gener
 public:
     // ===== Platform-specific members that may be accessed directly by the application.
 
-    /* none so far */
+    System::Clock::Timestamp GetStartTime() { return mStartTime; }
+    CHIP_ERROR InitBoardFwk(void);
+
+#if defined(MBEDTLS_USE_TINYCRYPT)
+    // Since the RNG callback will be called from multiple threads,
+    // use this mutex to lock/unlock the call to Matter RNG API, which
+    // uses some global variables.
+    static osaMutexId_t rngMutexHandle;
+    // Callback used by tinycrypt to generate random numbers.
+    // It must be set before calling any sign operations,
+    // which are used in both Matter and OT threads.
+    static int uECC_RNG_Function(uint8_t * dest, unsigned int size);
+#endif
 
 private:
     // ===== Methods that implement the PlatformManager abstract interface.
 
     CHIP_ERROR _InitChipStack(void);
+    void _Shutdown();
 
     // ===== Members for internal use by the following friends.
 
     friend PlatformManager & PlatformMgr(void);
     friend PlatformManagerImpl & PlatformMgrImpl(void);
     friend class Internal::BLEManagerImpl;
+
+    System::Clock::Timestamp mStartTime = System::Clock::kZero;
 
     static PlatformManagerImpl sInstance;
 

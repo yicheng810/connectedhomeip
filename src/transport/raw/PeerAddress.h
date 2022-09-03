@@ -23,11 +23,10 @@
 
 #pragma once
 
-#include <stdio.h>
-
 #include <inet/IPAddress.h>
 #include <inet/InetInterface.h>
 #include <lib/core/CHIPConfig.h>
+#include <lib/core/DataModelTypes.h>
 #include <lib/support/CHIPMemString.h>
 
 namespace chip {
@@ -111,19 +110,12 @@ public:
 
     bool operator!=(const PeerAddress & other) const { return !(*this == other); }
 
-    /// Maximum size of an Inet address ToString format, that can hold both IPV6 and IPV4 addresses.
-#ifdef INET6_ADDRSTRLEN
-    static constexpr size_t kInetMaxAddrLen = INET6_ADDRSTRLEN;
-#else
-    static constexpr size_t kInetMaxAddrLen = INET_ADDRSTRLEN;
-#endif
-
     /// Maximum size of the string outputes by ToString. Format is of the form:
     /// "UDP:<ip>:<port>"
     static constexpr size_t kMaxToStringSize = 3 // type: UDP/TCP/BLE
         + 1                                      // splitter :
         + 2                                      // brackets around address
-        + kInetMaxAddrLen                        // address
+        + Inet::IPAddress::kMaxStringLength      // address
         + 1                                      // splitter %
         + Inet::InterfaceId::kMaxIfNameLength    // interface
         + 1                                      // splitter :
@@ -138,7 +130,7 @@ public:
 
     void ToString(char * buf, size_t bufSize) const
     {
-        char ip_addr[kInetMaxAddrLen];
+        char ip_addr[Inet::IPAddress::kMaxStringLength];
 
         char interface[Inet::InterfaceId::kMaxIfNameLength + 1] = {}; // +1 to prepend '%'
         if (mInterface.IsPresent())
@@ -192,12 +184,26 @@ public:
     static PeerAddress BLE() { return PeerAddress(Type::kBle); }
     static PeerAddress UDP(const Inet::IPAddress & addr) { return PeerAddress(addr, Type::kUdp); }
     static PeerAddress UDP(const Inet::IPAddress & addr, uint16_t port) { return UDP(addr).SetPort(port); }
+
+    /**
+     * Parses a PeerAddress from the given IP address string with UDP type. For example,
+     * "192.168.1.4", "fe80::2", "fe80::1%wlan0". Notably this will also include the network scope
+     * ID in either index or name form (e.g. %wlan0, %14).
+     */
+    static PeerAddress UDP(char * addrStr, uint16_t port) { return PeerAddress::FromString(addrStr, port, Type::kUdp); }
     static PeerAddress UDP(const Inet::IPAddress & addr, uint16_t port, Inet::InterfaceId interface)
     {
         return UDP(addr).SetPort(port).SetInterface(interface);
     }
     static PeerAddress TCP(const Inet::IPAddress & addr) { return PeerAddress(addr, Type::kTcp); }
     static PeerAddress TCP(const Inet::IPAddress & addr, uint16_t port) { return TCP(addr).SetPort(port); }
+
+    /**
+     * Parses a PeerAddress from the given IP address string with TCP type. For example,
+     * "192.168.1.4", "fe80::2", "fe80::1%wlan0". Notably this will also include the network scope
+     * ID in either index or name form (e.g. %wlan0, %14).
+     */
+    static PeerAddress TCP(char * addrStr, uint16_t port) { return PeerAddress::FromString(addrStr, port, Type::kTcp); }
     static PeerAddress TCP(const Inet::IPAddress & addr, uint16_t port, Inet::InterfaceId interface)
     {
         return TCP(addr).SetPort(port).SetInterface(interface);
@@ -220,6 +226,13 @@ public:
     }
 
 private:
+    static PeerAddress FromString(char * addrStr, uint16_t port, Type type)
+    {
+        Inet::IPAddress addr;
+        Inet::InterfaceId interfaceId;
+        Inet::IPAddress::FromString(addrStr, addr, interfaceId);
+        return PeerAddress(addr, type).SetPort(port).SetInterface(interfaceId);
+    }
     Inet::IPAddress mIPAddress   = {};
     Type mTransportType          = Type::kUndefined;
     uint16_t mPort               = CHIP_PORT; ///< Relevant for UDP data sending.

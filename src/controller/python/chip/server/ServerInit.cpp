@@ -72,33 +72,33 @@ extern "C" {
 
 #if CHIP_DEVICE_CONFIG_ENABLE_WPA
 /*
- * The device shall check every kWifiStartCheckTimeUsec whether Wi-Fi management
- * has been fully initialized. If after kWifiStartCheckAttempts Wi-Fi management
+ * The device shall check every kWiFiStartCheckTimeUsec whether Wi-Fi management
+ * has been fully initialized. If after kWiFiStartCheckAttempts Wi-Fi management
  * still hasn't been initialized, the device configuration is reset, and device
  * needs to be paired again.
  */
-static constexpr useconds_t kWifiStartCheckTimeUsec = 100 * 1000; // 100 ms
-static constexpr uint8_t kWifiStartCheckAttempts    = 5;
+static constexpr useconds_t kWiFiStartCheckTimeUsec = 100 * 1000; // 100 ms
+static constexpr uint8_t kWiFiStartCheckAttempts    = 5;
 #endif
 
 #if CHIP_DEVICE_CONFIG_ENABLE_WPA
-static bool EnsureWifiIsStarted()
+static bool EnsureWiFiIsStarted()
 {
-    for (int cnt = 0; cnt < kWifiStartCheckAttempts; cnt++)
+    for (int cnt = 0; cnt < kWiFiStartCheckAttempts; cnt++)
     {
         if (chip::DeviceLayer::ConnectivityMgrImpl().IsWiFiManagementStarted())
         {
             return true;
         }
 
-        usleep(kWifiStartCheckTimeUsec);
+        usleep(kWiFiStartCheckTimeUsec);
     }
 
     return chip::DeviceLayer::ConnectivityMgrImpl().IsWiFiManagementStarted();
 }
 #endif
 
-using PostAttributeChangeCallback = void (*)(EndpointId endpoint, ClusterId clusterId, AttributeId attributeId, uint8_t mask,
+using PostAttributeChangeCallback = void (*)(EndpointId endpoint, ClusterId clusterId, AttributeId attributeId,
                                              uint16_t manufacturerCode, uint8_t type, uint16_t size, uint8_t * value);
 
 class PythonServerDelegate // : public ServerDelegate
@@ -159,7 +159,7 @@ void pychip_server_native_init()
     if (LinuxDeviceOptions::GetInstance().mWiFi)
     {
         chip::DeviceLayer::ConnectivityMgrImpl().StartWiFiManagement();
-        if (!EnsureWifiIsStarted())
+        if (!EnsureWiFiIsStarted())
         {
             ChipLogError(NotSpecified, "Wi-Fi Management taking too long to start - device configuration will be reset.");
         }
@@ -168,11 +168,13 @@ void pychip_server_native_init()
 
     // parts from ChipLinuxAppMainLoop
 
-    uint16_t securePort   = CHIP_PORT;
-    uint16_t unsecurePort = CHIP_UDC_PORT;
-
     // Init ZCL Data Model and CHIP App Server
-    chip::Server::GetInstance().Init(nullptr, securePort, unsecurePort);
+    static chip::CommonCaseDeviceServerInitParams initParams;
+    (void) initParams.InitializeStaticResourcesBeforeServerInit();
+    initParams.operationalServicePort        = CHIP_PORT;
+    initParams.userDirectedCommissioningPort = CHIP_UDC_PORT;
+
+    chip::Server::GetInstance().Init(initParams);
 
     // Initialize device attestation config
     // SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
@@ -190,14 +192,13 @@ void pychip_server_native_init()
 }
 
 void emberAfPostAttributeChangeCallback(chip::EndpointId endpoint, chip::ClusterId clusterId, chip::AttributeId attributeId,
-                                        uint8_t mask, uint16_t manufacturerCode, uint8_t type, uint16_t size, uint8_t * value)
+                                        uint16_t manufacturerCode, uint8_t type, uint16_t size, uint8_t * value)
 {
     // ChipLogProgress(NotSpecified, "emberAfPostAttributeChangeCallback()");
     if (gPythonServerDelegate.mPostAttributeChangeCallback != nullptr)
     {
         // ChipLogProgress(NotSpecified, "callback %p", gPythonServerDelegate.mPostAttributeChangeCallback);
-        gPythonServerDelegate.mPostAttributeChangeCallback(endpoint, clusterId, attributeId, mask, manufacturerCode, type, size,
-                                                           value);
+        gPythonServerDelegate.mPostAttributeChangeCallback(endpoint, clusterId, attributeId, manufacturerCode, type, size, value);
     }
     else
     {

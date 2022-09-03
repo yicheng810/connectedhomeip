@@ -33,7 +33,6 @@
 #include <messaging/ReliableMessageMgr.h>
 #include <protocols/Protocols.h>
 #include <transport/SessionManager.h>
-#include <transport/TransportMgr.h>
 
 namespace chip {
 namespace Messaging {
@@ -49,7 +48,7 @@ static constexpr int16_t kAnyMessageType = -1;
  *    It works on be behalf of higher layers, creating ExchangeContexts and
  *    handling the registration/unregistration of unsolicited message handlers.
  */
-class DLL_EXPORT ExchangeManager : public SessionMessageDelegate, public SessionReleaseDelegate
+class DLL_EXPORT ExchangeManager : public SessionMessageDelegate
 {
     friend class ExchangeContext;
 
@@ -82,10 +81,8 @@ public:
      *     there are no active ExchangeContext objects. Furthermore, it is the
      *     onus of the application to de-allocate the ExchangeManager
      *     object after calling ExchangeManager::Shutdown().
-     *
-     *  @return #CHIP_NO_ERROR unconditionally.
      */
-    CHIP_ERROR Shutdown();
+    void Shutdown();
 
     /**
      *  Creates a new ExchangeContext with a given peer CHIP node specified by the peer node identifier.
@@ -99,7 +96,7 @@ public:
      *  @return   A pointer to the created ExchangeContext object On success. Otherwise NULL if no object
      *            can be allocated or is available.
      */
-    ExchangeContext * NewContext(SessionHandle session, ExchangeDelegate * delegate);
+    ExchangeContext * NewContext(const SessionHandle & session, ExchangeDelegate * delegate);
 
     void ReleaseContext(ExchangeContext * ec) { mContextPool.ReleaseObject(ec); }
 
@@ -109,13 +106,13 @@ public:
      *
      *  @param[in]    protocolId      The protocol identifier of the received message.
      *
-     *  @param[in]    delegate        A pointer to ExchangeDelegate.
+     *  @param[in]    handler         A pointer to UnsolicitedMessageHandler.
      *
      *  @retval #CHIP_ERROR_TOO_MANY_UNSOLICITED_MESSAGE_HANDLERS If the unsolicited message handler pool
      *                                                             is full and a new one cannot be allocated.
      *  @retval #CHIP_NO_ERROR On success.
      */
-    CHIP_ERROR RegisterUnsolicitedMessageHandlerForProtocol(Protocols::Id protocolId, ExchangeDelegate * delegate);
+    CHIP_ERROR RegisterUnsolicitedMessageHandlerForProtocol(Protocols::Id protocolId, UnsolicitedMessageHandler * handler);
 
     /**
      *  Register an unsolicited message handler for a given protocol identifier and message type.
@@ -124,22 +121,23 @@ public:
      *
      *  @param[in]    msgType         The message type of the corresponding protocol.
      *
-     *  @param[in]    delegate        A pointer to ExchangeDelegate.
+     *  @param[in]    handler         A pointer to UnsolicitedMessageHandler.
      *
      *  @retval #CHIP_ERROR_TOO_MANY_UNSOLICITED_MESSAGE_HANDLERS If the unsolicited message handler pool
      *                                                             is full and a new one cannot be allocated.
      *  @retval #CHIP_NO_ERROR On success.
      */
-    CHIP_ERROR RegisterUnsolicitedMessageHandlerForType(Protocols::Id protocolId, uint8_t msgType, ExchangeDelegate * delegate);
+    CHIP_ERROR RegisterUnsolicitedMessageHandlerForType(Protocols::Id protocolId, uint8_t msgType,
+                                                        UnsolicitedMessageHandler * handler);
 
     /**
      * A strongly-message-typed version of RegisterUnsolicitedMessageHandlerForType.
      */
     template <typename MessageType, typename = std::enable_if_t<std::is_enum<MessageType>::value>>
-    CHIP_ERROR RegisterUnsolicitedMessageHandlerForType(MessageType msgType, ExchangeDelegate * delegate)
+    CHIP_ERROR RegisterUnsolicitedMessageHandlerForType(MessageType msgType, UnsolicitedMessageHandler * handler)
     {
         return RegisterUnsolicitedMessageHandlerForType(Protocols::MessageTypeTraits<MessageType>::ProtocolId(),
-                                                        to_underlying(msgType), delegate);
+                                                        to_underlying(msgType), handler);
     }
 
     /**
@@ -187,15 +185,11 @@ public:
 
     ReliableMessageMgr * GetReliableMessageMgr() { return &mReliableMessageMgr; };
 
-    FabricIndex GetFabricIndex() { return mFabricIndex; }
+    FabricIndex GetFabricIndex() const { return mFabricIndex; }
 
     uint16_t GetNextKeyId() { return ++mNextKeyId; }
 
     size_t GetNumActiveExchanges() { return mContextPool.Allocated(); }
-
-    // TODO: this should be test only, after OnSessionReleased is move to SessionHandle within the exchange context
-    // Expire all exchanges associated with the given session
-    void ExpireExchangesForSession(SessionHandle session);
 
 private:
     enum class State
@@ -204,50 +198,48 @@ private:
         kState_Initialized    = 1  // Used to indicate that the ExchangeManager is initialized.
     };
 
-    struct UnsolicitedMessageHandler
+    struct UnsolicitedMessageHandlerSlot
     {
-        UnsolicitedMessageHandler() : ProtocolId(Protocols::NotSpecified) {}
+        UnsolicitedMessageHandlerSlot() : ProtocolId(Protocols::NotSpecified) {}
 
-        constexpr void Reset() { Delegate = nullptr; }
-        constexpr bool IsInUse() const { return Delegate != nullptr; }
+        constexpr void Reset() { Handler = nullptr; }
+        constexpr bool IsInUse() const { return Handler != nullptr; }
         // Matches() only returns a sensible value if IsInUse() is true.
         constexpr bool Matches(Protocols::Id aProtocolId, int16_t aMessageType) const
         {
             return ProtocolId == aProtocolId && MessageType == aMessageType;
         }
 
-        ExchangeDelegate * Delegate;
         Protocols::Id ProtocolId;
         // Message types are normally 8-bit unsigned ints, but we use
         // kAnyMessageType, which is negative, to represent a wildcard handler,
         // so need a type that can store both that and all valid message type
         // values.
         int16_t MessageType;
+
+        UnsolicitedMessageHandler * Handler;
     };
 
     uint16_t mNextExchangeId;
     uint16_t mNextKeyId;
     State mState;
 
+    FabricIndex mFabricIndex = 0;
+
+    ObjectPool<ExchangeContext, CHIP_CONFIG_MAX_EXCHANGE_CONTEXTS> mContextPool;
+
     SessionManager * mSessionManager;
     ReliableMessageMgr mReliableMessageMgr;
 
-    ApplicationExchangeDispatch mDefaultExchangeDispatch;
+    UnsolicitedMessageHandlerSlot UMHandlerPool[CHIP_CONFIG_MAX_UNSOLICITED_MESSAGE_HANDLERS];
 
-    FabricIndex mFabricIndex = 0;
-
-    BitMapObjectPool<ExchangeContext, CHIP_CONFIG_MAX_EXCHANGE_CONTEXTS> mContextPool;
-
-    UnsolicitedMessageHandler UMHandlerPool[CHIP_CONFIG_MAX_UNSOLICITED_MESSAGE_HANDLERS];
-
-    CHIP_ERROR RegisterUMH(Protocols::Id protocolId, int16_t msgType, ExchangeDelegate * delegate);
+    CHIP_ERROR RegisterUMH(Protocols::Id protocolId, int16_t msgType, UnsolicitedMessageHandler * handler);
     CHIP_ERROR UnregisterUMH(Protocols::Id protocolId, int16_t msgType);
 
-    void OnMessageReceived(const PacketHeader & packetHeader, const PayloadHeader & payloadHeader, SessionHandle session,
-                           const Transport::PeerAddress & source, DuplicateMessage isDuplicate,
-                           System::PacketBufferHandle && msgBuf) override;
-
-    void OnSessionReleased(SessionHandle session) override;
+    void OnMessageReceived(const PacketHeader & packetHeader, const PayloadHeader & payloadHeader, const SessionHandle & session,
+                           DuplicateMessage isDuplicate, System::PacketBufferHandle && msgBuf) override;
+    void SendStandaloneAckIfNeeded(const PacketHeader & packetHeader, const PayloadHeader & payloadHeader,
+                                   const SessionHandle & session, MessageFlags msgFlags, System::PacketBufferHandle && msgBuf);
 };
 
 } // namespace Messaging

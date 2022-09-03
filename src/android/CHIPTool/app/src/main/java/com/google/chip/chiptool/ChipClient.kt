@@ -24,6 +24,8 @@ import chip.devicecontroller.GetConnectedDeviceCallbackJni.GetConnectedDeviceCal
 import chip.platform.AndroidBleManager
 import chip.platform.AndroidChipPlatform
 import chip.platform.ChipMdnsCallbackImpl
+import chip.platform.DiagnosticDataProviderImpl
+import chip.platform.NsdManagerServiceBrowser
 import chip.platform.NsdManagerServiceResolver
 import chip.platform.PreferencesConfigurationManager
 import chip.platform.PreferencesKeyValueStoreManager
@@ -50,7 +52,7 @@ object ChipClient {
     if (!this::androidPlatform.isInitialized && context != null) {
       //force ChipDeviceController load jni
       ChipDeviceController.loadJni()
-      androidPlatform = AndroidChipPlatform(AndroidBleManager(), PreferencesKeyValueStoreManager(context), PreferencesConfigurationManager(context), NsdManagerServiceResolver(context), ChipMdnsCallbackImpl())
+      androidPlatform = AndroidChipPlatform(AndroidBleManager(), PreferencesKeyValueStoreManager(context), PreferencesConfigurationManager(context), NsdManagerServiceResolver(context), NsdManagerServiceBrowser(context), ChipMdnsCallbackImpl(), DiagnosticDataProviderImpl(context))
     }
     return androidPlatform
   }
@@ -59,6 +61,10 @@ object ChipClient {
    * Wrapper around [ChipDeviceController.getConnectedDevicePointer] to return the value directly.
    */
   suspend fun getConnectedDevicePointer(context: Context, nodeId: Long): Long {
+    // TODO (#21539) This is a memory leak because we currently never call releaseConnectedDevicePointer
+    // once we are done with the returned device pointer. Memory leak was introduced since the refactor
+    // that introduced it was very large in order to fix a use after free, which was considered to be
+    // worse than the memory leak that was introduced.
     return suspendCoroutine { continuation ->
       getDeviceController(context).getConnectedDevicePointer(
         nodeId,

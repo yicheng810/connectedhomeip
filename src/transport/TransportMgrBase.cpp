@@ -17,6 +17,7 @@
 #include <transport/TransportMgrBase.h>
 
 #include <lib/support/CodeUtils.h>
+#include <platform/LockTracker.h>
 #include <transport/TransportMgr.h>
 #include <transport/raw/Base.h>
 
@@ -50,8 +51,17 @@ void TransportMgrBase::Close()
     mTransport      = nullptr;
 }
 
+CHIP_ERROR TransportMgrBase::MulticastGroupJoinLeave(const Transport::PeerAddress & address, bool join)
+{
+    return mTransport->MulticastGroupJoinLeave(address, join);
+}
+
 void TransportMgrBase::HandleMessageReceived(const Transport::PeerAddress & peerAddress, System::PacketBufferHandle && msg)
 {
+    // This is the first point all incoming messages funnel through.  Ensure
+    // that our message receipts are all synchronized correctly.
+    assertChipStackLockedByCurrentThread();
+
     if (msg->HasChainedBuffer())
     {
         // Something in the lower levels messed up.

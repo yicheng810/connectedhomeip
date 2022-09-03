@@ -55,6 +55,8 @@
 #include <app/util/basic-types.h>
 #include <app/util/types_stub.h> // For various types.
 
+#include <app/util/attribute-metadata.h> // EmberAfAttributeMetadata
+
 #include <app/ConcreteAttributePath.h>
 #include <lib/support/Variant.h>
 #include <messaging/ExchangeContext.h>
@@ -64,19 +66,9 @@
 #endif
 
 /**
- * @brief Type for referring to ZCL attribute type
- */
-typedef uint8_t EmberAfAttributeType;
-
-/**
  * @brief Type for the cluster mask
  */
 typedef uint8_t EmberAfClusterMask;
-
-/**
- * @brief Type for the attribute mask
- */
-typedef uint8_t EmberAfAttributeMask;
 
 /**
  * @brief Generic function type, used for either of the cluster function.
@@ -93,144 +85,6 @@ typedef void (*EmberAfGenericClusterFunction)(void);
 #define EMBER_AF_NULL_MANUFACTURER_CODE 0x0000
 
 /**
- * @brief Type for default values.
- *
- * Default value is either a value itself, if it is 2 bytes or less,
- * or a pointer to the value itself, if attribute type is longer than
- * 2 bytes.
- */
-union EmberAfDefaultAttributeValue
-{
-    constexpr EmberAfDefaultAttributeValue(const uint8_t * ptr) : ptrToDefaultValue(ptr) {}
-    constexpr EmberAfDefaultAttributeValue(uint16_t val) : defaultValue(val) {}
-
-    /**
-     * Points to data if size is more than 2 bytes.
-     * If size is more than 2 bytes, and this value is NULL,
-     * then the default value is all zeroes.
-     */
-    const uint8_t * ptrToDefaultValue;
-
-    /**
-     * Actual default value if the attribute size is 2 bytes or less.
-     */
-    uint16_t defaultValue;
-};
-
-/**
- * @brief Type describing the attribute default, min and max values.
- *
- * This struct is required if the attribute mask specifies that this
- * attribute has a known min and max values.
- */
-typedef struct
-{
-    /**
-     * Default value of the attribute.
-     */
-    EmberAfDefaultAttributeValue defaultValue;
-    /**
-     * Minimum allowed value
-     */
-    EmberAfDefaultAttributeValue minValue;
-    /**
-     * Maximum allowed value.
-     */
-    EmberAfDefaultAttributeValue maxValue;
-} EmberAfAttributeMinMaxValue;
-
-/**
- * @brief Union describing the attribute default/min/max values.
- */
-union EmberAfDefaultOrMinMaxAttributeValue
-{
-    constexpr EmberAfDefaultOrMinMaxAttributeValue(const uint8_t * ptr) : ptrToDefaultValue(ptr) {}
-    constexpr EmberAfDefaultOrMinMaxAttributeValue(uint16_t val) : defaultValue(val) {}
-    constexpr EmberAfDefaultOrMinMaxAttributeValue(const EmberAfAttributeMinMaxValue * ptr) : ptrToMinMaxValue(ptr) {}
-
-    /**
-     * Points to data if size is more than 2 bytes.
-     * If size is more than 2 bytes, and this value is NULL,
-     * then the default value is all zeroes.
-     */
-    const uint8_t * ptrToDefaultValue;
-    /**
-     * Actual default value if the attribute size is 2 bytes or less.
-     */
-    uint16_t defaultValue;
-    /**
-     * Points to the min max attribute value structure, if min/max is
-     * supported for this attribute.
-     */
-    const EmberAfAttributeMinMaxValue * ptrToMinMaxValue;
-};
-
-// Attribute masks modify how attributes are used by the framework
-//
-// Attribute that has this mask is NOT read-only
-#define ATTRIBUTE_MASK_WRITABLE (0x01)
-// Attribute that has this mask is saved to a token
-#define ATTRIBUTE_MASK_TOKENIZE (0x02)
-// Attribute that has this mask has a min/max values
-#define ATTRIBUTE_MASK_MIN_MAX (0x04)
-// Attribute requires a timed interaction to write
-#define ATTRIBUTE_MASK_MUST_USE_TIMED_WRITE (0x08)
-// Attribute deferred to external storage
-#define ATTRIBUTE_MASK_EXTERNAL_STORAGE (0x10)
-// Attribute is singleton
-#define ATTRIBUTE_MASK_SINGLETON (0x20)
-// Attribute is a client attribute
-#define ATTRIBUTE_MASK_CLIENT (0x40)
-// Attribute is nullable
-#define ATTRIBUTE_MASK_NULLABLE (0x80)
-
-/**
- * @brief Each attribute has it's metadata stored in such struct.
- *
- * There is only one of these per attribute across all endpoints.
- */
-struct EmberAfAttributeMetadata
-{
-    /**
-     * Attribute ID, according to ZCL specs.
-     */
-    chip::AttributeId attributeId;
-    /**
-     * Attribute type, according to ZCL specs.
-     */
-    EmberAfAttributeType attributeType;
-    /**
-     * Size of this attribute in bytes.
-     */
-    uint16_t size;
-    /**
-     * Attribute mask, tagging attribute with specific
-     * functionality.
-     */
-    EmberAfAttributeMask mask;
-    /**
-     * Pointer to the default value union. Actual value stored
-     * depends on the mask.
-     */
-    EmberAfDefaultOrMinMaxAttributeValue defaultValue;
-
-    /**
-     * Check whether this attribute is nullable.
-     */
-    bool IsNullable() const { return mask & ATTRIBUTE_MASK_NULLABLE; }
-
-    /**
-     * Check whether this attribute is readonly.
-     */
-    bool IsReadOnly() const { return !(mask & ATTRIBUTE_MASK_WRITABLE); }
-
-    /**
-     * Check whether this attribute requires a timed write.
-     */
-    bool MustUseTimedWrite() const { return mask & ATTRIBUTE_MASK_MUST_USE_TIMED_WRITE; }
-};
-
-/**
  * @brief Struct describing cluster
  */
 typedef struct
@@ -242,7 +96,7 @@ typedef struct
     /**
      * Pointer to attribute metadata array for this cluster.
      */
-    EmberAfAttributeMetadata * attributes;
+    const EmberAfAttributeMetadata * attributes;
     /**
      * Total number of attributes
      */
@@ -263,7 +117,29 @@ typedef struct
      * if this cluster has no functions.
      */
     const EmberAfGenericClusterFunction * functions;
+
+    /**
+     * A list of client generated commands. A client generated command
+     * is a client to server command. Can be nullptr or terminated by 0xFFFF_FFFF.
+     */
+    const chip::CommandId * acceptedCommandList;
+
+    /**
+     * A list of server generated commands. A server generated command
+     * is a response to client command request. Can be nullptr or terminated by 0xFFFF_FFFF.
+     */
+    const chip::CommandId * generatedCommandList;
 } EmberAfCluster;
+
+/**
+ * @brief Struct that represents a logical device type consisting
+ * of a DeviceID and its version.
+ */
+typedef struct
+{
+    uint16_t deviceId;
+    uint8_t deviceVersion;
+} EmberAfDeviceType;
 
 /**
  * @brief Struct used to find an attribute in storage. Together the elements
@@ -278,48 +154,15 @@ typedef struct
     chip::EndpointId endpoint;
 
     /**
-     * Cluster that the attribute is located on. If the cluster
-     * id is inside the manufacturer specific range, 0xfc00 - 0xffff,
-     * The manufacturer code should also be set to the code associated
-     * with the manufacturer specific cluster.
+     * Cluster that the attribute is located on.
      */
     chip::ClusterId clusterId;
 
     /**
-     * Cluster mask for the cluster, used to determine if it is
-     * the server or client version of the cluster. See CLUSTER_MASK_
-     * macros defined in att-storage.h
-     */
-    EmberAfClusterMask clusterMask;
-
-    /**
-     * The two byte identifier for the attribute. If the cluster id is
-     * inside the manufacturer specific range 0xfc00 - 0xffff, or the manufacturer
-     * code is NOT 0, the attribute is assumed to be manufacturer specific.
+     * The identifier for the attribute.
      */
     chip::AttributeId attributeId;
-
-    /**
-     * Manufacturer Code associated with the cluster and or attribute.
-     * If the cluster id is inside the manufacturer specific
-     * range, this value should indicate the manufacturer code for the
-     * manufacturer specific cluster. Otherwise if this value is non zero,
-     * and the cluster id is a standard ZCL cluster,
-     * it is assumed that the attribute being sought is a manufacturer specific
-     * extension to the standard ZCL cluster indicated by the cluster id.
-     */
-    uint16_t manufacturerCode;
 } EmberAfAttributeSearchRecord;
-
-/**
- * A struct used to construct a table of manufacturer codes for
- * manufacturer specific attributes and clusters.
- */
-typedef struct
-{
-    uint16_t index;
-    uint16_t manufacturerCode;
-} EmberAfManufacturerCodeEntry;
 
 /**
  * This type is used to compare two ZCL attribute values. The size of this data
@@ -470,7 +313,7 @@ typedef struct
  */
 struct EmberAfClusterCommand
 {
-    chip::NodeId SourceNodeId() const { return source->GetSessionHandle().GetPeerNodeId(); }
+    chip::NodeId SourceNodeId() const { return source->GetSessionHandle()->AsSecureSession()->GetPeerNodeId(); }
 
     /**
      * APS frame for the incoming message
@@ -500,7 +343,7 @@ typedef struct
      * Pointer to the cluster structs, describing clusters on this
      * endpoint type.
      */
-    EmberAfCluster * cluster;
+    const EmberAfCluster * cluster;
     /**
      * Number of clusters in this endpoint type.
      */
@@ -540,33 +383,37 @@ enum
 /**
  * @brief Struct that maps actual endpoint type, onto a specific endpoint.
  */
-typedef struct
+struct EmberAfDefinedEndpoint
 {
     /**
      * Actual zigbee endpoint number.
      */
-    chip::EndpointId endpoint;
+    chip::EndpointId endpoint = chip::kInvalidEndpointId;
+
     /**
-     * Device ID of the device on this endpoint.
+     * Span pointing to a list of supported device types
      */
-    uint16_t deviceId;
-    /**
-     * Version of the device.
-     */
-    uint8_t deviceVersion;
-    /**
-     * Endpoint type for this endpoint.
-     */
-    EmberAfEndpointType * endpointType;
-    /**
-     * Network index for this endpoint.
-     */
-    uint8_t networkIndex;
+    chip::Span<const EmberAfDeviceType> deviceTypeList;
+
     /**
      * Meta-data about the endpoint
      */
-    EmberAfEndpointBitmask bitmask;
-} EmberAfDefinedEndpoint;
+    EmberAfEndpointBitmask bitmask = EMBER_AF_ENDPOINT_DISABLED;
+    /**
+     * Endpoint type for this endpoint.
+     */
+    const EmberAfEndpointType * endpointType = nullptr;
+    /**
+     * Pointer to the DataVersion storage for the server clusters on this
+     * endpoint
+     */
+    chip::DataVersion * dataVersions = nullptr;
+
+    /**
+     * Root endpoint id for composed device type.
+     */
+    chip::EndpointId parentEndpointId = chip::kInvalidEndpointId;
+};
 
 // Cluster specific types
 
@@ -869,36 +716,6 @@ typedef void (*EmberAfNetworkEventHandler)(void);
  */
 typedef void (*EmberAfEndpointEventHandler)(chip::EndpointId endpoint);
 
-#ifdef EMBER_AF_PLUGIN_GROUPS_SERVER
-/**
- * @brief Indicates the absence of a Group table entry.
- */
-#define EMBER_AF_GROUP_TABLE_NULL_INDEX 0xFF
-/**
- * @brief Value used when setting or getting the endpoint in a Group table
- * entry.  It indicates that the entry is not in use.
- */
-#define EMBER_AF_GROUP_TABLE_UNUSED_ENDPOINT_ID 0x00
-/**
- * @brief Maximum length of Group names, not including the length byte.
- */
-#define ZCL_GROUPS_CLUSTER_MAXIMUM_NAME_LENGTH 16
-/**
- * @brief A structure used to store group table entries in RAM or in tokens,
- * depending on the platform.  If the endpoint field is
- * ::EMBER_AF_GROUP_TABLE_UNUSED_ENDPOINT_ID, the entry is unused.
- */
-typedef struct
-{
-    chip::EndpointId endpoint; // 0x00 when not in use
-    chip::GroupId groupId;
-    uint8_t bindingIndex;
-#ifdef EMBER_AF_PLUGIN_GROUPS_SERVER_NAME_SUPPORT
-    uint8_t name[ZCL_GROUPS_CLUSTER_MAXIMUM_NAME_LENGTH + 1];
-#endif
-} EmberAfGroupTableEntry;
-#endif // EMBER_AF_PLUGIN_GROUPS_SERVER
-
 /**
  * @brief Indicates the absence of a Scene table entry.
  */
@@ -921,7 +738,7 @@ typedef struct
  */
 #define ZCL_SCENES_GLOBAL_SCENE_SCENE_ID 0x00
 /**
- * @brief A structure used to store scene table entries in RAM or in tokens,
+ * @brief A structure used to store scene table entries in RAM or in storage,
  * depending on a plugin setting.  If endpoint field is
  * ::EMBER_AF_SCENE_TABLE_UNUSED_ENDPOINT_ID, the entry is unused.
  */
@@ -930,7 +747,7 @@ typedef struct
     chip::EndpointId endpoint; // 0x00 when this record is not in use
     chip::GroupId groupId;     // 0x0000 if not associated with a group
     uint8_t sceneId;
-#ifdef EMBER_AF_PLUGIN_SCENES_NAME_SUPPORT
+#if defined(MATTER_CLUSTER_SCENE_NAME_SUPPORT) && MATTER_CLUSTER_SCENE_NAME_SUPPORT
     uint8_t name[ZCL_SCENES_CLUSTER_MAXIMUM_NAME_LENGTH + 1];
 #endif
     uint16_t transitionTime;     // in seconds
@@ -1756,12 +1573,6 @@ typedef struct
     EmberNodeId emberNodeId;
     uint32_t timeStamp;
 } EmberAfJoiningDevice;
-
-#define EMBER_AF_INVALID_CLUSTER_ID 0xFFFF
-
-#define EMBER_AF_INVALID_ENDPOINT 0xFF
-
-#define EMBER_AF_INVALID_PAN_ID 0xFFFF
 
 /**
  * @brief Permit join times

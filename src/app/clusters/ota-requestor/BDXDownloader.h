@@ -26,6 +26,7 @@
 
 #include "OTADownloader.h"
 
+#include <app-common/zap-generated/cluster-objects.h>
 #include <lib/core/CHIPError.h>
 #include <protocols/bdx/BdxTransferSession.h>
 #include <system/SystemPacketBuffer.h>
@@ -45,15 +46,24 @@ public:
         virtual ~MessagingDelegate() {}
     };
 
-    BDXDownloader() : chip::OTADownloader() {}
+    class StateDelegate
+    {
+    public:
+        // Handle download state change
+        virtual void OnDownloadStateChanged(State state, app::Clusters::OtaSoftwareUpdateRequestor::OTAChangeReasonEnum reason) = 0;
+        // Handle update progress change
+        virtual void OnUpdateProgressChanged(app::DataModel::Nullable<uint8_t> percent) = 0;
+        virtual ~StateDelegate()                                                        = default;
+    };
 
     // To be called when there is an incoming message to handle (of any protocol type)
     void OnMessageReceived(const chip::PayloadHeader & payloadHeader, chip::System::PacketBufferHandle msg);
 
     void SetMessageDelegate(MessagingDelegate * delegate) { mMsgDelegate = delegate; }
+    void SetStateDelegate(StateDelegate * delegate) { mStateDelegate = delegate; }
 
     // Initialize a BDX transfer session but will not proceed until OnPreparedForDownload() is called.
-    CHIP_ERROR SetBDXParams(const chip::bdx::TransferSession::TransferInitData & bdxInitData);
+    CHIP_ERROR SetBDXParams(const chip::bdx::TransferSession::TransferInitData & bdxInitData, System::Clock::Timeout timeout);
 
     // OTADownloader Overrides
     CHIP_ERROR BeginPrepareDownload() override;
@@ -65,12 +75,25 @@ public:
     CHIP_ERROR FetchNextData() override;
     // TODO: override SkipData
 
+    System::Clock::Timeout GetTimeout();
+    // If True, there's been a timeout in the transfer as measured by no download progress after 'mTimeout' seconds.
+    // If False, there's been progress in the transfer.
+    bool HasTransferTimedOut();
+
 private:
     void PollTransferSession();
+    void CleanupOnError(app::Clusters::OtaSoftwareUpdateRequestor::OTAChangeReasonEnum reason);
     CHIP_ERROR HandleBdxEvent(const chip::bdx::TransferSession::OutputEvent & outEvent);
+    void SetState(State state, app::Clusters::OtaSoftwareUpdateRequestor::OTAChangeReasonEnum reason);
+    void Reset();
 
     chip::bdx::TransferSession mBdxTransfer;
-    MessagingDelegate * mMsgDelegate;
+    MessagingDelegate * mMsgDelegate = nullptr;
+    StateDelegate * mStateDelegate   = nullptr;
+    // Timeout value in seconds to abort the download if there's no progress in the transfer session.
+    System::Clock::Timeout mTimeout = System::Clock::kZero;
+    // Tracks the last block counter used during the transfer session as of the previous check.
+    uint32_t mPrevBlockCounter = 0;
 };
 
 } // namespace chip

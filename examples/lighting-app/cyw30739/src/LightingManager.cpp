@@ -21,9 +21,14 @@
 #include <app-common/zap-generated/att-storage.h>
 #include <app-common/zap-generated/attribute-id.h>
 #include <app-common/zap-generated/attribute-type.h>
+#include <app-common/zap-generated/attributes/Accessors.h>
 #include <app-common/zap-generated/cluster-id.h>
 #include <app/util/af.h>
 #include <stdio.h>
+
+using namespace chip;
+using namespace chip::app;
+using namespace chip::app::Clusters;
 
 LightingManager LightingManager::sLight;
 
@@ -47,15 +52,15 @@ bool LightingManager::IsActionInProgress()
 
 bool LightingManager::IsLightOn(void)
 {
-    uint8_t value;
-    const EmberAfStatus status =
-        emberAfReadServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, &value, sizeof(value));
+    bool on                    = true;
+    const EmberAfStatus status = OnOff::Attributes::OnOff::Get(1, &on);
+
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error ReadServerAttribute 0x%02x\n", status);
     }
 
-    return value != 0;
+    return on != false;
 }
 
 bool LightingManager::InitiateAction(Actor_t aActor, Action_t aAction, uint8_t value)
@@ -97,8 +102,8 @@ bool LightingManager::InitiateAction(Actor_t aActor, Action_t aAction, uint8_t v
 
 void LightingManager::WriteClusterState(uint8_t value)
 {
-    const EmberAfStatus status =
-        emberAfWriteServerAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, &value, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+    const EmberAfStatus status = OnOff::Attributes::OnOff::Set(1, value);
+
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error WriteServerAttribute 0x%02x\n", status);
@@ -107,8 +112,8 @@ void LightingManager::WriteClusterState(uint8_t value)
 
 void LightingManager::WriteClusterLevel(uint8_t value)
 {
-    const EmberAfStatus status = emberAfWriteServerAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID,
-                                                             &value, ZCL_INT8U_ATTRIBUTE_TYPE);
+    const EmberAfStatus status = LevelControl::Attributes::CurrentLevel::Set(1, value);
+
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         printf("Error WriteServerAttribute 0x%02x\n", status);

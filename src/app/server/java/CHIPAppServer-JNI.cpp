@@ -22,6 +22,8 @@
  *
  */
 #include "AndroidAppServerWrapper.h"
+#include "ChipFabricProvider-JNI.h"
+#include "ChipThreadWork.h"
 #include <jni.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/CHIPJNIError.h>
@@ -79,6 +81,8 @@ jint AndroidAppServerJNI_OnLoad(JavaVM * jvm, void * reserved)
 
     err = AndroidChipPlatformJNI_OnLoad(jvm, reserved);
     SuccessOrExit(err);
+    err = AndroidChipFabricProviderJNI_OnLoad(jvm, reserved);
+    SuccessOrExit(err);
 
 exit:
     if (err != CHIP_NO_ERROR)
@@ -127,6 +131,12 @@ exit:
     {
         return JNI_FALSE;
     }
+    return JNI_TRUE;
+}
+
+JNI_METHOD(jboolean, stopApp)(JNIEnv * env, jobject self)
+{
+    chip::ThreadWork::ChipMainThreadScheduleAndWait([] { ChipAndroidAppShutdown(); });
     return JNI_TRUE;
 }
 

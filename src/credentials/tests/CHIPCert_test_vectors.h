@@ -26,15 +26,14 @@
 
 #pragma once
 
-#include <lib/core/CHIPConfig.h>
-#include <lib/support/BitFlags.h>
+#include <credentials/CHIPCert.h>
+#include <credentials/CHIPCertificateSet.h>
 #include <lib/support/CodeUtils.h>
 
 namespace chip {
 namespace TestCerts {
 
 using namespace chip::Credentials;
-using namespace chip::ASN1;
 
 enum TestCert
 {

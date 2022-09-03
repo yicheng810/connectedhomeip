@@ -50,10 +50,8 @@ void * StaticAllocatorBitmap::Allocate()
                     IncreaseUsage();
                     return At(word * kBitChunkSize + offset);
                 }
-                else
-                {
-                    value = usage.load(std::memory_order_relaxed); // if there is a race, update new usage
-                }
+
+                value = usage.load(std::memory_order_relaxed); // if there is a race, update new usage
             }
         }
     }
@@ -84,7 +82,6 @@ size_t StaticAllocatorBitmap::IndexOf(void * element)
     return index;
 }
 
-using Lambda = Loop (*)(void *, void *);
 Loop StaticAllocatorBitmap::ForEachActiveObjectInner(void * context, Lambda lambda)
 {
     for (size_t word = 0; word * kBitChunkSize < Capacity(); ++word)
@@ -117,12 +114,10 @@ HeapObjectListNode * HeapObjectList::FindNode(void * object) const
     return nullptr;
 }
 
-using Lambda = Loop (*)(void *, void *);
 Loop HeapObjectList::ForEachNode(void * context, Lambda lambda)
 {
     ++mIterationDepth;
     Loop result            = Loop::Finish;
-    bool anyReleased       = false;
     HeapObjectListNode * p = mNext;
     while (p != this)
     {
@@ -134,14 +129,10 @@ Loop HeapObjectList::ForEachNode(void * context, Lambda lambda)
                 break;
             }
         }
-        if (p->mObject == nullptr)
-        {
-            anyReleased = true;
-        }
         p = p->mNext;
     }
     --mIterationDepth;
-    if (mIterationDepth == 0 && anyReleased)
+    if (mIterationDepth == 0 && mHaveDeferredNodeRemovals)
     {
         // Remove nodes for released objects.
         p = mNext;
@@ -151,10 +142,12 @@ Loop HeapObjectList::ForEachNode(void * context, Lambda lambda)
             if (p->mObject == nullptr)
             {
                 p->Remove();
-                delete p;
+                Platform::Delete(p);
             }
             p = next;
         }
+
+        mHaveDeferredNodeRemovals = false;
     }
     return result;
 }

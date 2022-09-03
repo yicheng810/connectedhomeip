@@ -36,6 +36,9 @@ extern "C" void app_main(void)
     chip::Platform::MemoryInit();
     chip::DeviceLayer::PlatformMgr().InitChipStack();
     chip::DeviceLayer::PlatformMgr().StartEventLoopTask();
-    cmd_ping_init();
+
+    int ret = Engine::Root().Init();
+    VerifyOrDie(ret == 0);
+
     xTaskCreate(&chip_shell_task, "chip_shell", 2048, NULL, 5, NULL);
 }

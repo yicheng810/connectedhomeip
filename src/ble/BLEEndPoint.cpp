@@ -85,7 +85,7 @@
  *
  *  @brief
  *    This is amount of time, in milliseconds, which a BLE end point will wait for an unsubscribe operation to complete
- *    before it automatically releases its BLE connection and frees itself. The default value of 5 seconds is arbitary.
+ *    before it automatically releases its BLE connection and frees itself. The default value of 5 seconds is arbitrary.
  *
  */
 #define BLE_UNSUBSCRIBE_TIMEOUT_MS                            5000 // 5 seconds
@@ -586,8 +586,15 @@ CHIP_ERROR BLEEndPoint::Init(BleLayer * bleLayer, BLE_CONNECTION_OBJECT connObj,
     return CHIP_NO_ERROR;
 }
 
+void BLEEndPoint::AddRef()
+{
+    VerifyOrDie(mRefCount < UINT32_MAX);
+    mRefCount++;
+}
+
 void BLEEndPoint::Release()
 {
+    VerifyOrDie(mRefCount > 0u);
     // Decrement the ref count.  When it reaches zero, NULL out the pointer to the chip::System::Layer
     // object. This effectively declared the object free and ready for re-allocation.
     mRefCount--;
@@ -879,9 +886,6 @@ CHIP_ERROR BLEEndPoint::HandleFragmentConfirmationReceived()
 
     // Ensure we're in correct state to receive confirmation of non-handshake GATT send.
     VerifyOrExit(IsConnected(mState), err = CHIP_ERROR_INCORRECT_STATE);
-
-    // TODO Packet buffer high water mark optimization: if ack pending, but fragmenter state == complete, free fragmenter's
-    // tx buf before sending ack.
 
     if (mConnStateFlags.Has(ConnectionStateFlag::kStandAloneAckInFlight))
     {

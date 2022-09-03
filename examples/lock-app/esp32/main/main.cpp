@@ -16,7 +16,6 @@
  */
 
 #include "AppTask.h"
-#include "CHIPDeviceManager.h"
 #include "DeviceCallbacks.h"
 #include "esp_heap_caps_init.h"
 #include "esp_log.h"
@@ -28,8 +27,8 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "shell_extension/launch.h"
-#include <app/server/Server.h>
-
+#include <common/CHIPDeviceManager.h>
+#include <common/Esp32AppServer.h>
 #include <credentials/DeviceAttestationCredsProvider.h>
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 
@@ -45,21 +44,39 @@
 #include "Rpc.h"
 #endif
 
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+#include <platform/ESP32/ESP32FactoryDataProvider.h>
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+
+#if CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+#include <platform/ESP32/ESP32DeviceInfoProvider.h>
+#else
+#include <DeviceInfoProviderImpl.h>
+#endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+
 using namespace ::chip;
-using namespace ::chip::Credentials;
 using namespace ::chip::DeviceManager;
-using namespace ::chip::DeviceLayer;
+using namespace ::chip::Credentials;
+
+namespace {
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+DeviceLayer::ESP32FactoryDataProvider sFactoryDataProvider;
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+
+#if CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+DeviceLayer::ESP32DeviceInfoProvider gExampleDeviceInfoProvider;
+#else
+DeviceLayer::DeviceInfoProviderImpl gExampleDeviceInfoProvider;
+#endif // CONFIG_ENABLE_ESP32_DEVICE_INFO_PROVIDER
+} // namespace
 
 static const char * TAG = "lock-app";
 
-static DeviceCallbacks EchoCallbacks;
+static AppDeviceCallbacks EchoCallbacks;
 
 static void InitServer(intptr_t context)
 {
-    chip::Server::GetInstance().Init();
-
-    // Initialize device attestation config
-    SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+    Esp32AppServer::Init(); // Init ZCL Data Model and CHIP App Server AND Initialize device attestation config
 
     ESP_LOGI(TAG, "------------------------Starting App Task---------------------------");
     CHIP_ERROR error = GetAppTask().StartAppTask();
@@ -91,14 +108,25 @@ extern "C" void app_main()
     chip::LaunchShell();
 #endif
 
-    CHIPDeviceManager & deviceMgr = CHIPDeviceManager::GetInstance();
+    DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
 
-    CHIP_ERROR error = deviceMgr.Init(&EchoCallbacks);
+    CHIPDeviceManager & deviceMgr = CHIPDeviceManager::GetInstance();
+    CHIP_ERROR error              = deviceMgr.Init(&EchoCallbacks);
     if (error != CHIP_NO_ERROR)
     {
         ESP_LOGE(TAG, "device.Init() failed: %s", ErrorStr(error));
         return;
     }
+
+#if CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
+    SetCommissionableDataProvider(&sFactoryDataProvider);
+    SetDeviceAttestationCredentialsProvider(&sFactoryDataProvider);
+#if CONFIG_ENABLE_ESP32_DEVICE_INSTANCE_INFO_PROVIDER
+    SetDeviceInstanceInfoProvider(&sFactoryDataProvider);
+#endif
+#else
+    SetDeviceAttestationCredentialsProvider(Examples::GetExampleDACProvider());
+#endif // CONFIG_ENABLE_ESP32_FACTORY_DATA_PROVIDER
 
     chip::DeviceLayer::PlatformMgr().ScheduleWork(InitServer, reinterpret_cast<intptr_t>(nullptr));
 }

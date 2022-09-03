@@ -37,13 +37,16 @@ namespace DeviceLayer {
 class ConfigurationManagerImpl : public Internal::GenericConfigurationManagerImpl<Internal::PosixConfig>
 {
 public:
+    CHIP_ERROR StoreVendorId(uint16_t vendorId);
+    CHIP_ERROR StoreProductId(uint16_t productId);
+
     CHIP_ERROR GetRebootCount(uint32_t & rebootCount) override;
     CHIP_ERROR StoreRebootCount(uint32_t rebootCount) override;
     CHIP_ERROR GetTotalOperationalHours(uint32_t & totalOperationalHours) override;
     CHIP_ERROR StoreTotalOperationalHours(uint32_t totalOperationalHours) override;
     CHIP_ERROR GetBootReason(uint32_t & bootReason) override;
     CHIP_ERROR StoreBootReason(uint32_t bootReason) override;
-    CHIP_ERROR GetRegulatoryConfig(uint8_t & location) override;
+    CHIP_ERROR GetRegulatoryLocation(uint8_t & location) override;
     CHIP_ERROR GetLocationCapability(uint8_t & location) override;
     static ConfigurationManagerImpl & GetDefaultInstance();
 
@@ -63,6 +66,8 @@ private:
 #endif
 
     // NOTE: Other public interface methods are implemented by GenericConfigurationManagerImpl<>.
+    CHIP_ERROR WriteConfigValue(Key key, uint16_t val);
+    CHIP_ERROR ReadConfigValue(Key key, uint16_t & val);
 
     // ===== Members that implement the GenericConfigurationManagerImpl protected interface.
     CHIP_ERROR ReadConfigValue(Key key, bool & val) override;
@@ -82,6 +87,14 @@ private:
 
     static void DoFactoryReset(intptr_t arg);
 };
+
+/**
+ * Returns the platform-specific implementation of the ConfigurationManager object.
+ *
+ * Applications can use this to gain access to features of the ConfigurationManager
+ * that are specific to the selected platform.
+ */
+ConfigurationManager & ConfigurationMgrImpl();
 
 } // namespace DeviceLayer
 } // namespace chip

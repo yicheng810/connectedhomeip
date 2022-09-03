@@ -25,6 +25,9 @@
 #pragma once
 
 #include <platform/internal/GenericPlatformManagerImpl_FreeRTOS.h>
+#if CHIP_DEVICE_CONFIG_ENABLE_WIFI_STATION
+#include "wfx_host_events.h"
+#endif
 
 namespace chip {
 namespace DeviceLayer {
@@ -46,6 +49,9 @@ class PlatformManagerImpl final : public PlatformManager, public Internal::Gener
 
 public:
     // ===== Platform-specific members that may be accessed directly by the application.
+#if CHIP_DEVICE_CONFIG_ENABLE_WIFI_STATION
+    void HandleWFXSystemEvent(wfx_event_base_t eventBase, sl_wfx_generic_message_t * eventData);
+#endif
 
     System::Clock::Timestamp GetStartTime() { return mStartTime; }
 
@@ -53,7 +59,7 @@ private:
     // ===== Methods that implement the PlatformManager abstract interface.
 
     CHIP_ERROR _InitChipStack(void);
-    CHIP_ERROR _Shutdown(void);
+    void _Shutdown(void);
 
     // ===== Members for internal use by the following friends.
 

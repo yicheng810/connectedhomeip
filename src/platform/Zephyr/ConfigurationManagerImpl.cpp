@@ -24,19 +24,13 @@
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
 #include <platform/ConfigurationManager.h>
-#include <platform/internal/GenericConfigurationManagerImpl.cpp>
+#include <platform/internal/GenericConfigurationManagerImpl.ipp>
 
 #include <lib/core/CHIPVendorIdentifiers.hpp>
 #include <platform/Zephyr/ZephyrConfig.h>
 
-#if CHIP_DEVICE_CONFIG_ENABLE_FACTORY_PROVISIONING
-#include <platform/internal/FactoryProvisioning.cpp>
-#endif // CHIP_DEVICE_CONFIG_ENABLE_FACTORY_PROVISIONING
-
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
-
-#include <power/reboot.h>
 
 namespace chip {
 namespace DeviceLayer {
@@ -52,36 +46,58 @@ ConfigurationManagerImpl & ConfigurationManagerImpl::GetDefaultInstance()
 CHIP_ERROR ConfigurationManagerImpl::Init()
 {
     CHIP_ERROR err;
-    bool failSafeArmed;
+    uint32_t rebootCount;
 
     // Initialize the generic implementation base class.
     err = Internal::GenericConfigurationManagerImpl<ZephyrConfig>::Init();
     SuccessOrExit(err);
 
-    // TODO: Initialize the global GroupKeyStore object here
-#if CHIP_DEVICE_CONFIG_ENABLE_FACTORY_PROVISIONING
+    if (ZephyrConfig::ConfigValueExists(ZephyrConfig::kCounterKey_RebootCount))
     {
-        FactoryProvisioning factoryProv;
-        uint8_t * const kDeviceRAMStart = (uint8_t *) CONFIG_SRAM_BASE_ADDRESS;
-        uint8_t * const kDeviceRAMEnd   = kDeviceRAMStart + CONFIG_SRAM_SIZE * 1024 - 1;
+        err = GetRebootCount(rebootCount);
+        SuccessOrExit(err);
 
-        // Scan device RAM for injected provisioning data and save to persistent storage if found.
-        err = factoryProv.ProvisionDeviceFromRAM(kDeviceRAMStart, kDeviceRAMEnd);
+        // Do not increment reboot count if the value is going to overflow UINT16.
+        err = StoreRebootCount(rebootCount < UINT16_MAX ? rebootCount + 1 : rebootCount);
         SuccessOrExit(err);
     }
-#endif // CHIP_DEVICE_CONFIG_ENABLE_FACTORY_PROVISIONING
-
-    // If the fail-safe was armed when the device last shutdown, initiate a factory reset.
-    if (GetFailSafeArmed(failSafeArmed) == CHIP_NO_ERROR && failSafeArmed)
+    else
     {
-        ChipLogProgress(DeviceLayer, "Detected fail-safe armed on reboot; initiating factory reset");
-        InitiateFactoryReset();
+        // The first boot after factory reset of the Node.
+        err = StoreRebootCount(1);
+        SuccessOrExit(err);
     }
 
     err = CHIP_NO_ERROR;
 
 exit:
     return err;
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetRebootCount(uint32_t & rebootCount)
+{
+    return ReadConfigValue(ZephyrConfig::kCounterKey_RebootCount, rebootCount);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreRebootCount(uint32_t rebootCount)
+{
+    return WriteConfigValue(ZephyrConfig::kCounterKey_RebootCount, rebootCount);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetTotalOperationalHours(uint32_t & totalOperationalHours)
+{
+    if (!ZephyrConfig::ConfigValueExists(ZephyrConfig::kCounterKey_TotalOperationalHours))
+    {
+        totalOperationalHours = 0;
+        return CHIP_NO_ERROR;
+    }
+
+    return ZephyrConfig::ReadConfigValue(ZephyrConfig::kCounterKey_TotalOperationalHours, totalOperationalHours);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreTotalOperationalHours(uint32_t totalOperationalHours)
+{
+    return ZephyrConfig::WriteConfigValue(ZephyrConfig::kCounterKey_TotalOperationalHours, totalOperationalHours);
 }
 
 void ConfigurationManagerImpl::InitiateFactoryReset()
@@ -155,15 +171,18 @@ void ConfigurationManagerImpl::DoFactoryReset(intptr_t arg)
     const CHIP_ERROR err = PersistedStorage::KeyValueStoreMgrImpl().DoFactoryReset();
 
     if (err != CHIP_NO_ERROR)
-        ChipLogError(DeviceLayer, "Factory reset failed: %s", ErrorStr(err));
+        ChipLogError(DeviceLayer, "Factory reset failed: %" CHIP_ERROR_FORMAT, err.Format());
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     ThreadStackMgr().ErasePersistentInfo();
 #endif // CHIP_DEVICE_CONFIG_ENABLE_THREAD
 
-#if CONFIG_REBOOT
-    sys_reboot(SYS_REBOOT_WARM);
-#endif
+    PlatformMgr().Shutdown();
+}
+
+ConfigurationManager & ConfigurationMgrImpl()
+{
+    return ConfigurationManagerImpl::GetDefaultInstance();
 }
 
 } // namespace DeviceLayer

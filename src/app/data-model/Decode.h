@@ -18,14 +18,24 @@
 
 #pragma once
 
+#include <app-common/zap-generated/cluster-enums-check.h>
+#include <app/ConcreteAttributePath.h>
 #include <app/data-model/Nullable.h>
 #include <lib/core/CHIPError.h>
 #include <lib/core/CHIPSafeCasts.h>
 #include <lib/core/CHIPTLV.h>
 #include <lib/core/Optional.h>
+#include <protocols/interaction_model/Constants.h>
 
 namespace chip {
 namespace app {
+namespace Clusters {
+static auto __attribute__((unused)) EnsureKnownEnumValue(chip::VendorId val)
+{
+    return val;
+}
+} // namespace Clusters
+
 namespace DataModel {
 
 //
@@ -46,7 +56,9 @@ CHIP_ERROR Decode(TLV::TLVReader & reader, X & x)
 template <typename X, typename std::enable_if_t<std::is_enum<X>::value, int> = 0>
 CHIP_ERROR Decode(TLV::TLVReader & reader, X & x)
 {
-    return reader.Get(x);
+    ReturnErrorOnFailure(reader.Get(x));
+    x = Clusters::EnsureKnownEnumValue(x);
+    return CHIP_NO_ERROR;
 }
 
 template <typename X>
@@ -105,6 +117,33 @@ CHIP_ERROR Decode(TLV::TLVReader & reader, X & x)
 /*
  * @brief
  *
+ * This specific variant decodes from TLV a cluster object that contains all attributes encapsulated within a single, monolithic
+ * cluster object.
+ *
+ * Each attribute in the cluster is decoded based on the provided ConcreteAttributePath. The TLVReader is to be positioned right on
+ * the data value for the specified attribute.
+ *
+ * This API depends on the presence of a Decode method on the object. The signature of that method
+ * is as follows:
+ *
+ * CHIP_ERROR <Object>::Decode(TLVReader &reader, ConcreteAttributePath &path);
+ *
+ */
+template <
+    typename X,
+    typename std::enable_if_t<std::is_class<X>::value &&
+                                  std::is_same<decltype(std::declval<X>().Decode(std::declval<TLV::TLVReader &>(),
+                                                                                 std::declval<const ConcreteAttributePath &>())),
+                                               CHIP_ERROR>::value,
+                              X> * = nullptr>
+CHIP_ERROR Decode(TLV::TLVReader & reader, const ConcreteAttributePath & path, X & x)
+{
+    return x.Decode(reader, path);
+}
+
+/*
+ * @brief
+ *
  * Decodes an optional value (struct field, command field, event field).
  */
 template <typename X>
@@ -130,7 +169,12 @@ CHIP_ERROR Decode(TLV::TLVReader & reader, Nullable<X> & x)
     }
 
     // We have a value; decode it.
-    return Decode(reader, x.SetNonNull());
+    ReturnErrorOnFailure(Decode(reader, x.SetNonNull()));
+    if (!x.HasValidValue())
+    {
+        return CHIP_IM_GLOBAL_STATUS(ConstraintError);
+    }
+    return CHIP_NO_ERROR;
 }
 
 } // namespace DataModel

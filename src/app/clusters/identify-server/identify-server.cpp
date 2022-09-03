@@ -64,42 +64,47 @@ using namespace chip;
 using namespace chip::app;
 using namespace chip::app::Clusters::Identify;
 
-static std::array<Identify *, EMBER_AF_IDENTIFY_CLUSTER_SERVER_ENDPOINT_COUNT> instances = { 0 };
+static Identify * firstIdentify = nullptr;
 
 static void onIdentifyClusterTick(chip::System::Layer * systemLayer, void * appState);
 
 static Identify * inst(EndpointId endpoint)
 {
-    for (size_t i = 0; i < instances.size(); i++)
+    Identify * current = firstIdentify;
+    while (current != nullptr && current->mEndpoint != endpoint)
     {
-        if (nullptr != instances[i] && endpoint == instances[i]->mEndpoint)
-        {
-            return instances[i];
-        }
+        current = current->next();
     }
 
-    return nullptr;
+    return current;
 }
 
 static inline void reg(Identify * inst)
 {
-    for (size_t i = 0; i < instances.size(); i++)
-    {
-        if (nullptr == instances[i])
-        {
-            instances[i] = inst;
-            break;
-        }
-    }
+    inst->setNext(firstIdentify);
+    firstIdentify = inst;
 }
 
 static inline void unreg(Identify * inst)
 {
-    for (size_t i = 0; i < instances.size(); i++)
+    if (firstIdentify == inst)
     {
-        if (inst == instances[i])
+        firstIdentify = firstIdentify->next();
+    }
+    else
+    {
+        Identify * previous = firstIdentify;
+        Identify * current  = firstIdentify->next();
+
+        while (current != nullptr && current != inst)
         {
-            instances[i] = nullptr;
+            previous = current;
+            current  = current->next();
+        }
+
+        if (current != nullptr)
+        {
+            previous->setNext(current->next());
         }
     }
 }
@@ -179,7 +184,7 @@ void MatterIdentifyClusterServerAttributeChangedCallback(const app::ConcreteAttr
                     return;
                 }
                 /* stop identify process */
-                else if (EMBER_ZCL_IDENTIFY_EFFECT_IDENTIFIER_STOP_EFFECT == identify->mCurrentEffectIdentifier && identifyTime > 0)
+                if (EMBER_ZCL_IDENTIFY_EFFECT_IDENTIFIER_STOP_EFFECT == identify->mCurrentEffectIdentifier && identifyTime > 0)
                 {
                     Clusters::Identify::Attributes::IdentifyTime::Set(endpoint, 0);
                     identify_deactivate(identify);
@@ -223,61 +228,6 @@ bool emberAfIdentifyClusterIdentifyCallback(CommandHandler * commandObj, const a
     return EMBER_SUCCESS ==
         emberAfSendImmediateDefaultResponse(
                Clusters::Identify::Attributes::IdentifyTime::Set(commandPath.mEndpointId, identifyTime));
-}
-
-bool emberAfIdentifyClusterIdentifyQueryCallback(CommandHandler * commandObj, const app::ConcreteCommandPath & commandPath,
-                                                 const Commands::IdentifyQuery::DecodableType & commandData)
-{
-    EndpointId endpoint = commandPath.mEndpointId;
-
-    // cmd IdentifyQuery
-    uint16_t identifyTime  = 0;
-    EmberAfStatus status   = EMBER_ZCL_STATUS_SUCCESS;
-    EmberStatus sendStatus = EMBER_SUCCESS;
-    CHIP_ERROR err         = CHIP_NO_ERROR;
-
-    status = Clusters::Identify::Attributes::IdentifyTime::Get(endpoint, &identifyTime);
-
-    if (status != EMBER_ZCL_STATUS_SUCCESS || 0 == identifyTime)
-    {
-        if (status != EMBER_ZCL_STATUS_SUCCESS)
-        {
-            emberAfIdentifyClusterPrintln("Error reading identify time");
-        }
-        else
-        {
-            emberAfIdentifyClusterPrintln("identifyTime is at 0");
-        }
-        emberAfIdentifyClusterPrintln("Sending back default response");
-        sendStatus = emberAfSendImmediateDefaultResponse(status);
-        if (EMBER_SUCCESS != sendStatus)
-        {
-            emberAfIdentifyClusterPrintln("Identify: failed to send %s response: "
-                                          "0x%x",
-                                          "default", sendStatus);
-        }
-        return true;
-    }
-
-    emberAfIdentifyClusterPrintln("Identifying for %u more seconds", identifyTime);
-    {
-        app::ConcreteCommandPath path = { endpoint, Clusters::Identify::Id, ZCL_IDENTIFY_QUERY_RESPONSE_COMMAND_ID };
-        TLV::TLVWriter * writer       = nullptr;
-
-        VerifyOrExit(commandObj != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
-
-        SuccessOrExit(err = commandObj->PrepareCommand(path));
-        VerifyOrExit((writer = commandObj->GetCommandDataIBTLVWriter()) != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
-        SuccessOrExit(err = writer->Put(TLV::ContextTag(0), identifyTime));
-        SuccessOrExit(err = commandObj->FinishCommand());
-    }
-
-exit:
-    if (err != CHIP_NO_ERROR)
-    {
-        emberAfIdentifyClusterPrintln("Failed to encode response command.");
-    }
-    return true;
 }
 
 bool emberAfIdentifyClusterTriggerEffectCallback(CommandHandler * commandObj, const app::ConcreteCommandPath & commandPath,

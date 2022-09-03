@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2021 Project CHIP Authors
+ *    Copyright (c) 2022 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -22,50 +22,46 @@
 #include <app-common/zap-generated/callbacks/PluginCallbacks.h>
 
 #define MATTER_PLUGINS_INIT                                                                                                        \
-    MatterAccountLoginPluginServerInitCallback();                                                                                  \
-    MatterAdministratorCommissioningPluginServerInitCallback();                                                                    \
-    MatterApplicationBasicPluginServerInitCallback();                                                                              \
-    MatterApplicationLauncherPluginServerInitCallback();                                                                           \
-    MatterAudioOutputPluginServerInitCallback();                                                                                   \
-    MatterBarrierControlPluginServerInitCallback();                                                                                \
-    MatterBasicPluginServerInitCallback();                                                                                         \
-    MatterBinaryInputBasicPluginServerInitCallback();                                                                              \
-    MatterBindingPluginServerInitCallback();                                                                                       \
-    MatterBridgedDeviceBasicPluginServerInitCallback();                                                                            \
-    MatterColorControlPluginServerInitCallback();                                                                                  \
-    MatterContentLauncherPluginServerInitCallback();                                                                               \
-    MatterDescriptorPluginServerInitCallback();                                                                                    \
-    MatterDiagnosticLogsPluginServerInitCallback();                                                                                \
-    MatterDoorLockPluginServerInitCallback();                                                                                      \
-    MatterEthernetNetworkDiagnosticsPluginServerInitCallback();                                                                    \
-    MatterFixedLabelPluginServerInitCallback();                                                                                    \
-    MatterFlowMeasurementPluginServerInitCallback();                                                                               \
-    MatterGeneralCommissioningPluginServerInitCallback();                                                                          \
-    MatterGeneralDiagnosticsPluginServerInitCallback();                                                                            \
-    MatterGroupKeyManagementPluginServerInitCallback();                                                                            \
-    MatterGroupsPluginServerInitCallback();                                                                                        \
-    MatterIasZonePluginServerInitCallback();                                                                                       \
     MatterIdentifyPluginServerInitCallback();                                                                                      \
-    MatterKeypadInputPluginServerInitCallback();                                                                                   \
-    MatterLevelControlPluginServerInitCallback();                                                                                  \
-    MatterMediaInputPluginServerInitCallback();                                                                                    \
-    MatterMediaPlaybackPluginServerInitCallback();                                                                                 \
-    MatterNetworkCommissioningPluginServerInitCallback();                                                                          \
-    MatterOtaSoftwareUpdateProviderPluginServerInitCallback();                                                                     \
-    MatterOccupancySensingPluginServerInitCallback();                                                                              \
-    MatterOnOffPluginServerInitCallback();                                                                                         \
-    MatterOperationalCredentialsPluginServerInitCallback();                                                                        \
-    MatterPressureMeasurementPluginServerInitCallback();                                                                           \
-    MatterRelativeHumidityMeasurementPluginServerInitCallback();                                                                   \
+    MatterGroupsPluginServerInitCallback();                                                                                        \
     MatterScenesPluginServerInitCallback();                                                                                        \
+    MatterOnOffPluginClientInitCallback();                                                                                         \
+    MatterOnOffPluginServerInitCallback();                                                                                         \
+    MatterLevelControlPluginClientInitCallback();                                                                                  \
+    MatterLevelControlPluginServerInitCallback();                                                                                  \
+    MatterBinaryInputBasicPluginServerInitCallback();                                                                              \
+    MatterDescriptorPluginClientInitCallback();                                                                                    \
+    MatterDescriptorPluginServerInitCallback();                                                                                    \
+    MatterBindingPluginServerInitCallback();                                                                                       \
+    MatterAccessControlPluginServerInitCallback();                                                                                 \
+    MatterBasicPluginServerInitCallback();                                                                                         \
+    MatterOtaSoftwareUpdateProviderPluginServerInitCallback();                                                                     \
+    MatterLocalizationConfigurationPluginServerInitCallback();                                                                     \
+    MatterTimeFormatLocalizationPluginServerInitCallback();                                                                        \
+    MatterUnitLocalizationPluginServerInitCallback();                                                                              \
+    MatterGeneralCommissioningPluginServerInitCallback();                                                                          \
+    MatterNetworkCommissioningPluginServerInitCallback();                                                                          \
+    MatterDiagnosticLogsPluginServerInitCallback();                                                                                \
+    MatterGeneralDiagnosticsPluginServerInitCallback();                                                                            \
     MatterSoftwareDiagnosticsPluginServerInitCallback();                                                                           \
-    MatterSwitchPluginServerInitCallback();                                                                                        \
-    MatterTvChannelPluginServerInitCallback();                                                                                     \
-    MatterTargetNavigatorPluginServerInitCallback();                                                                               \
-    MatterTemperatureMeasurementPluginServerInitCallback();                                                                        \
-    MatterTestClusterPluginServerInitCallback();                                                                                   \
-    MatterThermostatPluginServerInitCallback();                                                                                    \
     MatterThreadNetworkDiagnosticsPluginServerInitCallback();                                                                      \
-    MatterWakeOnLanPluginServerInitCallback();                                                                                     \
     MatterWiFiNetworkDiagnosticsPluginServerInitCallback();                                                                        \
-    MatterWindowCoveringPluginServerInitCallback();
+    MatterEthernetNetworkDiagnosticsPluginServerInitCallback();                                                                    \
+    MatterSwitchPluginServerInitCallback();                                                                                        \
+    MatterAdministratorCommissioningPluginServerInitCallback();                                                                    \
+    MatterOperationalCredentialsPluginServerInitCallback();                                                                        \
+    MatterGroupKeyManagementPluginServerInitCallback();                                                                            \
+    MatterFixedLabelPluginServerInitCallback();                                                                                    \
+    MatterUserLabelPluginServerInitCallback();                                                                                     \
+    MatterBarrierControlPluginServerInitCallback();                                                                                \
+    MatterWakeOnLanPluginServerInitCallback();                                                                                     \
+    MatterChannelPluginClientInitCallback();                                                                                       \
+    MatterTargetNavigatorPluginClientInitCallback();                                                                               \
+    MatterMediaPlaybackPluginClientInitCallback();                                                                                 \
+    MatterMediaInputPluginClientInitCallback();                                                                                    \
+    MatterKeypadInputPluginClientInitCallback();                                                                                   \
+    MatterContentLauncherPluginClientInitCallback();                                                                               \
+    MatterAudioOutputPluginClientInitCallback();                                                                                   \
+    MatterApplicationLauncherPluginClientInitCallback();                                                                           \
+    MatterApplicationBasicPluginClientInitCallback();                                                                              \
+    MatterAccountLoginPluginClientInitCallback();

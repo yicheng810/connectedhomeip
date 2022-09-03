@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2020 Project CHIP Authors
+ *    Copyright (c) 2022 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@ namespace DeviceLayer {
 class ConfigurationManagerImpl : public Internal::GenericConfigurationManagerImpl<Internal::ZephyrConfig>
 {
 public:
+    CHIP_ERROR GetRebootCount(uint32_t & rebootCount) override;
+    CHIP_ERROR StoreRebootCount(uint32_t rebootCount) override;
+    CHIP_ERROR GetTotalOperationalHours(uint32_t & totalOperationalHours) override;
+    CHIP_ERROR StoreTotalOperationalHours(uint32_t totalOperationalHours) override;
     // This returns an instance of this class.
     static ConfigurationManagerImpl & GetDefaultInstance();
 
@@ -77,7 +81,12 @@ inline bool ConfigurationManagerImpl::CanFactoryReset()
 
 inline CHIP_ERROR ConfigurationManagerImpl::ReadPersistedStorageValue(::chip::Platform::PersistedStorage::Key key, uint32_t & value)
 {
-    return Internal::ZephyrConfig::ReadConfigValueCounter(key, value);
+    CHIP_ERROR err = Internal::ZephyrConfig::ReadConfigValueCounter(key, value);
+    if (err == CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND)
+    {
+        err = CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND;
+    }
+    return err;
 }
 
 inline CHIP_ERROR ConfigurationManagerImpl::WritePersistedStorageValue(::chip::Platform::PersistedStorage::Key key, uint32_t value)
@@ -89,6 +98,14 @@ inline CHIP_ERROR ConfigurationManagerImpl::GetPrimaryWiFiMACAddress(uint8_t * /
 {
     return CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE;
 }
+
+/**
+ * Returns the platform-specific implementation of the ConfigurationManager object.
+ *
+ * Applications can use this to gain access to features of the ConfigurationManager
+ * that are specific to the selected platform.
+ */
+ConfigurationManager & ConfigurationMgrImpl();
 
 } // namespace DeviceLayer
 } // namespace chip

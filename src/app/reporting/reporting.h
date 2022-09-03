@@ -39,6 +39,7 @@
 
 #pragma once
 
+#include <app/ConcreteAttributePath.h>
 #include <app/util/af-types.h>
 
 /** @brief Reporting Attribute Change
@@ -49,9 +50,19 @@
  * notification to inform its reporting decisions.
  */
 void MatterReportingAttributeChangeCallback(chip::EndpointId endpoint, chip::ClusterId clusterId, chip::AttributeId attributeId,
-                                            uint8_t mask, uint16_t manufacturerCode, EmberAfAttributeType type, uint8_t * data);
+                                            EmberAfAttributeType type, uint8_t * data);
 
 /*
  * Same but with just an attribute path and no data available.
  */
 void MatterReportingAttributeChangeCallback(chip::EndpointId endpoint, chip::ClusterId clusterId, chip::AttributeId attributeId);
+
+/*
+ * Same but with a nicer attribute path.
+ */
+void MatterReportingAttributeChangeCallback(const chip::app::ConcreteAttributePath & aPath);
+
+/*
+ * Same but only with an EndpointId, this is used when adding / enabling an endpoint during runtime.
+ */
+void MatterReportingAttributeChangeCallback(chip::EndpointId endpoint);

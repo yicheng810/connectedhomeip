@@ -245,8 +245,8 @@ namespace {
 float BitCastToFloat(const uint64_t elemLenOrVal)
 {
     float f;
-    auto u32 = static_cast<uint32_t>(elemLenOrVal);
-    memcpy(&f, &u32, sizeof(f));
+    auto unsigned32 = static_cast<uint32_t>(elemLenOrVal);
+    memcpy(&f, &unsigned32, sizeof(f));
     return f;
 }
 } // namespace
@@ -396,6 +396,12 @@ CHIP_ERROR TLVReader::GetDataPtr(const uint8_t *& data)
 
     if (!TLVTypeIsString(ElementType()))
         return CHIP_ERROR_WRONG_TLV_TYPE;
+
+    if (GetLength() == 0)
+    {
+        data = nullptr;
+        return CHIP_NO_ERROR;
+    }
 
     err = EnsureData(CHIP_ERROR_TLV_UNDERRUN);
     if (err != CHIP_NO_ERROR)
@@ -576,7 +582,7 @@ CHIP_ERROR TLVReader::Skip()
  */
 void TLVReader::ClearElementState()
 {
-    mElemTag      = AnonymousTag;
+    mElemTag      = AnonymousTag();
     mControlByte  = kTLVControlByte_NotSpecified;
     mElemLenOrVal = 0;
 }
@@ -725,6 +731,7 @@ CHIP_ERROR TLVReader::ReadElement()
         break;
     case kTLVFieldSize_8Byte:
         mElemLenOrVal = LittleEndian::Read64(p);
+        VerifyOrReturnError(!TLVTypeHasLength(elemType) || (mElemLenOrVal <= UINT32_MAX), CHIP_ERROR_NOT_IMPLEMENTED);
         break;
     }
 
@@ -737,7 +744,7 @@ CHIP_ERROR TLVReader::VerifyElement()
     {
         if (mContainerType == kTLVType_NotSpecified)
             return CHIP_ERROR_INVALID_TLV_ELEMENT;
-        if (mElemTag != AnonymousTag)
+        if (mElemTag != AnonymousTag())
             return CHIP_ERROR_INVALID_TLV_TAG;
     }
     else
@@ -751,11 +758,11 @@ CHIP_ERROR TLVReader::VerifyElement()
                 return CHIP_ERROR_INVALID_TLV_TAG;
             break;
         case kTLVType_Structure:
-            if (mElemTag == AnonymousTag)
+            if (mElemTag == AnonymousTag())
                 return CHIP_ERROR_INVALID_TLV_TAG;
             break;
         case kTLVType_Array:
-            if (mElemTag != AnonymousTag)
+            if (mElemTag != AnonymousTag())
                 return CHIP_ERROR_INVALID_TLV_TAG;
             break;
         case kTLVType_UnknownContainer:
@@ -784,7 +791,7 @@ CHIP_ERROR TLVReader::VerifyElement()
     return CHIP_NO_ERROR;
 }
 
-Tag TLVReader::ReadTag(TLVTagControl tagControl, const uint8_t *& p)
+Tag TLVReader::ReadTag(TLVTagControl tagControl, const uint8_t *& p) const
 {
     uint16_t vendorId;
     uint16_t profileNum;
@@ -815,7 +822,7 @@ Tag TLVReader::ReadTag(TLVTagControl tagControl, const uint8_t *& p)
         return ProfileTag(vendorId, profileNum, LittleEndian::Read32(p));
     case TLVTagControl::Anonymous:
     default:
-        return AnonymousTag;
+        return AnonymousTag();
     }
 }
 

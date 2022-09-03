@@ -18,25 +18,28 @@
 
 #pragma once
 
-#include <app-common/zap-generated/af-structs.h>
+#include <app/clusters/keypad-input-server/keypad-input-server.h>
 #include <jni.h>
-#include <lib/core/CHIPError.h>
 
-class KeypadInputManager
+using chip::app::CommandResponseHelper;
+using KeypadInputDelegate = chip::app::Clusters::KeypadInput::Delegate;
+using SendKeyResponseType = chip::app::Clusters::KeypadInput::Commands::SendKeyResponse::Type;
+
+class KeypadInputManager : public KeypadInputDelegate
 {
 public:
+    static void NewManager(jint endpoint, jobject manager);
     void InitializeWithObjects(jobject managerObject);
-    EmberAfKeypadInputStatus SendKey(EmberAfKeypadInputCecKeyCode keyCode);
+
+    void HandleSendKey(CommandResponseHelper<SendKeyResponseType> & helper,
+                       const chip::app::Clusters::KeypadInput::CecKeyCode & keyCode) override;
+
+    uint32_t GetFeatureMap(chip::EndpointId endpoint) override;
 
 private:
-    friend KeypadInputManager & KeypadInputMgr();
-
-    static KeypadInputManager sInstance;
     jobject mKeypadInputManagerObject = nullptr;
     jmethodID mSendKeyMethod          = nullptr;
-};
 
-inline KeypadInputManager & KeypadInputMgr()
-{
-    return KeypadInputManager::sInstance;
-}
+    // TODO: set this based upon meta data from app
+    uint32_t mDynamicEndpointFeatureMap = 7;
+};

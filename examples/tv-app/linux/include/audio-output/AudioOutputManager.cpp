@@ -18,54 +18,72 @@
 
 #include "AudioOutputManager.h"
 
-#include <app-common/zap-generated/cluster-objects.h>
-#include <app/util/af.h>
-#include <app/util/basic-types.h>
-#include <lib/core/CHIPSafeCasts.h>
-#include <lib/support/CodeUtils.h>
-
-#include <map>
-#include <string>
-
 using namespace std;
+using namespace chip::app;
+using namespace chip::app::Clusters::AudioOutput;
 
-CHIP_ERROR AudioOutputManager::Init()
+AudioOutputManager::AudioOutputManager()
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
+    mCurrentOutput = 1;
 
-    // TODO: Store feature map once it is supported
-    map<string, bool> featureMap;
-    featureMap["NU"] = true;
-
-    return err;
+    for (int i = 1; i < 4; ++i)
+    {
+        OutputInfoType outputInfo;
+        outputInfo.outputType = chip::app::Clusters::AudioOutput::OutputTypeEnum::kHdmi;
+        // note: safe only because of use of string literal
+        outputInfo.name  = chip::CharSpan::fromCharString("HDMI");
+        outputInfo.index = static_cast<uint8_t>(i);
+        mOutputs.push_back(outputInfo);
+    }
 }
 
-CHIP_ERROR AudioOutputManager::proxyGetListOfAudioOutputInfo(chip::app::AttributeValueEncoder & aEncoder)
+uint8_t AudioOutputManager::HandleGetCurrentOutput()
 {
-    return aEncoder.EncodeList([](const auto & encoder) -> CHIP_ERROR {
-        // TODO: Insert code here
-        int maximumVectorSize = 3;
-        char name[]           = "exampleName";
+    return mCurrentOutput;
+}
 
-        for (int i = 0; i < maximumVectorSize; ++i)
+CHIP_ERROR AudioOutputManager::HandleGetOutputList(AttributeValueEncoder & aEncoder)
+{
+    // TODO: Insert code here
+    return aEncoder.EncodeList([this](const auto & encoder) -> CHIP_ERROR {
+        for (auto const & outputInfo : this->mOutputs)
         {
-            chip::app::Clusters::AudioOutput::Structs::AudioOutputInfo::Type audioOutputInfo;
-            audioOutputInfo.outputType = EMBER_ZCL_AUDIO_OUTPUT_TYPE_HDMI;
-            audioOutputInfo.name       = chip::CharSpan(name, sizeof(name) - 1);
-            audioOutputInfo.index      = static_cast<uint8_t>(1 + i);
-            ReturnErrorOnFailure(encoder.Encode(audioOutputInfo));
+            ReturnErrorOnFailure(encoder.Encode(outputInfo));
         }
         return CHIP_NO_ERROR;
     });
 }
 
-bool audioOutputClusterSelectOutput(uint8_t index)
+bool AudioOutputManager::HandleRenameOutput(const uint8_t & index, const chip::CharSpan & name)
 {
     // TODO: Insert code here
-    return true;
+    bool audioOutputRenamed = false;
+
+    for (OutputInfoType & output : mOutputs)
+    {
+        if (output.index == index)
+        {
+            audioOutputRenamed = true;
+            memcpy(this->Data(index), name.data(), name.size());
+            output.name = chip::CharSpan(this->Data(index), name.size());
+        }
+    }
+
+    return audioOutputRenamed;
 }
-bool audioOutputClusterRenameOutput(uint8_t index, const chip::CharSpan & name)
+
+bool AudioOutputManager::HandleSelectOutput(const uint8_t & index)
 {
     // TODO: Insert code here
-    return true;
+    bool audioOutputSelected = false;
+    for (OutputInfoType & output : mOutputs)
+    {
+        if (output.index == index)
+        {
+            audioOutputSelected = true;
+            mCurrentOutput      = index;
+        }
+    }
+
+    return audioOutputSelected;
 }

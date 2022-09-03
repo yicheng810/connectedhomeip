@@ -22,7 +22,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include <app/AppBuildConfig.h>
+#include <app/AppConfig.h>
 
 namespace chip {
 namespace app {
@@ -41,7 +41,7 @@ CHIP_ERROR InvokeResponseIBs::Parser::CheckSchemaValidity() const
 
     while (CHIP_NO_ERROR == (err = reader.Next()))
     {
-        VerifyOrReturnError(TLV::AnonymousTag == reader.GetTag(), CHIP_ERROR_INVALID_TLV_TAG);
+        VerifyOrReturnError(TLV::AnonymousTag() == reader.GetTag(), CHIP_ERROR_INVALID_TLV_TAG);
         {
             InvokeResponseIB::Parser invokeResponse;
             ReturnErrorOnFailure(invokeResponse.Init(reader));
@@ -54,20 +54,19 @@ CHIP_ERROR InvokeResponseIBs::Parser::CheckSchemaValidity() const
     }
 
     PRETTY_PRINT("],");
-    PRETTY_PRINT("");
+    PRETTY_PRINT_BLANK_LINE();
 
     // if we have exhausted this container
     if (CHIP_END_OF_TLV == err)
     {
-        // if we have at least one data element
+        // if we have at least one response
         if (numInvokeResponses > 0)
         {
             err = CHIP_NO_ERROR;
         }
     }
     ReturnErrorOnFailure(err);
-    ReturnErrorOnFailure(reader.ExitContainer(mOuterContainerType));
-    return CHIP_NO_ERROR;
+    return reader.ExitContainer(mOuterContainerType);
 }
 #endif // CHIP_CONFIG_IM_ENABLE_SCHEMA_CHECK
 

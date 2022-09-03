@@ -24,31 +24,35 @@
 #include <app/clusters/content-launch-server/content-launch-server.h>
 #include <jni.h>
 #include <lib/core/CHIPError.h>
-#include <list>
 
-class ContentLauncherManager
+using chip::CharSpan;
+using chip::app::AttributeValueEncoder;
+using chip::app::CommandResponseHelper;
+using ContentLauncherDelegate = chip::app::Clusters::ContentLauncher::Delegate;
+using LaunchResponseType      = chip::app::Clusters::ContentLauncher::Commands::LaunchResponse::Type;
+using ParameterType           = chip::app::Clusters::ContentLauncher::Structs::Parameter::DecodableType;
+using BrandingInformationType = chip::app::Clusters::ContentLauncher::Structs::BrandingInformation::Type;
+
+class ContentLauncherManager : public ContentLauncherDelegate
 {
 public:
+    static void NewManager(jint endpoint, jobject manager);
     void InitializeWithObjects(jobject managerObject);
-    CHIP_ERROR GetAcceptsHeader(chip::app::AttributeValueEncoder & aEncoder);
-    CHIP_ERROR GetSupportedStreamingTypes(chip::app::AttributeValueEncoder & aEncoder);
-    ContentLaunchResponse LaunchContent(std::list<ContentLaunchParamater> parameterList, bool autoplay,
-                                        const chip::CharSpan & data);
-    ContentLaunchResponse LaunchUrl(const chip::CharSpan & contentUrl, const chip::CharSpan & displayString,
-                                    ContentLaunchBrandingInformation & brandingInformation);
+
+    void HandleLaunchContent(CommandResponseHelper<LaunchResponseType> & helper,
+                             const chip::app::DataModel::DecodableList<ParameterType> & parameterList, bool autoplay,
+                             const CharSpan & data) override;
+    void HandleLaunchUrl(CommandResponseHelper<LaunchResponseType> & helper, const CharSpan & contentUrl,
+                         const CharSpan & displayString, const BrandingInformationType & brandingInformation) override;
+    CHIP_ERROR HandleGetAcceptHeaderList(AttributeValueEncoder & aEncoder) override;
+    uint32_t HandleGetSupportedStreamingProtocols() override;
+
+    uint32_t GetFeatureMap(chip::EndpointId endpoint) override;
 
 private:
-    friend ContentLauncherManager & ContentLauncherMgr();
-
-    static ContentLauncherManager sInstance;
-    jobject mContentLauncherManagerObject       = nullptr;
-    jmethodID mGetAcceptsHeaderMethod           = nullptr;
-    jmethodID mGetSupportedStreamingTypesMethod = nullptr;
-    jmethodID mLaunchContentMethod              = nullptr;
-    jmethodID mLaunchUrlMethod                  = nullptr;
+    jobject mContentLauncherManagerObject           = nullptr;
+    jmethodID mGetAcceptHeaderMethod                = nullptr;
+    jmethodID mGetSupportedStreamingProtocolsMethod = nullptr;
+    jmethodID mLaunchContentMethod                  = nullptr;
+    jmethodID mLaunchUrlMethod                      = nullptr;
 };
-
-inline ContentLauncherManager & ContentLauncherMgr()
-{
-    return ContentLauncherManager::sInstance;
-}

@@ -58,8 +58,6 @@ function atomicType(arg)
     return 'chip::EventNumber';
   case 'fabric_idx':
     return 'chip::FabricIndex';
-  case 'status':
-    return 'chip::Protocols::InteractionModel::Status';
   case 'octet_string':
   case 'long_octet_string':
     return 'chip::ByteSpan';
@@ -75,6 +73,7 @@ function atomicType(arg)
   case 'epoch_us':
     return 'uint64_t';
   case 'epoch_s':
+  case 'utc':
     return 'uint32_t';
   default:
     throw 'not overriding';

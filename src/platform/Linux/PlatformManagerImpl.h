@@ -56,14 +56,11 @@ public:
 
     System::Clock::Timestamp GetStartTime() { return mStartTime; }
 
-    void HandleGeneralFault(uint32_t EventId);
-    void HandleSoftwareFault(uint32_t EventId);
-
 private:
     // ===== Methods that implement the PlatformManager abstract interface.
 
     CHIP_ERROR _InitChipStack();
-    CHIP_ERROR _Shutdown();
+    void _Shutdown();
 
     // ===== Members for internal use by the following friends.
 
@@ -78,7 +75,6 @@ private:
     // The temporary hack for getting IP address change on linux for network provisioning in the rendezvous session.
     // This should be removed or find a better place once we depercate the rendezvous session.
     static void WiFIIPChangeListener();
-    static void HandleDeviceRebooted(intptr_t arg);
 
 #if CHIP_WITH_GIO
     struct GDBusConnectionDeleter

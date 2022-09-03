@@ -25,15 +25,19 @@
 
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
-#include <app-common/zap-generated/enums.h>
+#include <app-common/zap-generated/cluster-objects.h>
 #include <ifaddrs.h>
 #include <lib/core/CHIPVendorIdentifiers.hpp>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
 #include <netpacket/packet.h>
+#include <platform/CHIPDeviceConfig.h>
 #include <platform/ConfigurationManager.h>
+#include <platform/DiagnosticDataProvider.h>
 #include <platform/Linux/PosixConfig.h>
-#include <platform/internal/GenericConfigurationManagerImpl.cpp>
+#include <platform/internal/GenericConfigurationManagerImpl.ipp>
+
+#include <algorithm>
 
 namespace chip {
 namespace DeviceLayer {
@@ -50,7 +54,6 @@ CHIP_ERROR ConfigurationManagerImpl::Init()
 {
     CHIP_ERROR err;
     uint32_t rebootCount;
-    bool failSafeArmed;
 
     // Force initialization of NVS namespaces if they doesn't already exist.
     err = PosixConfig::EnsureNamespace(PosixConfig::kConfigNamespace_ChipFactory);
@@ -63,6 +66,18 @@ CHIP_ERROR ConfigurationManagerImpl::Init()
     // Initialize the generic implementation base class.
     err = Internal::GenericConfigurationManagerImpl<PosixConfig>::Init();
     SuccessOrExit(err);
+
+    if (!PosixConfig::ConfigValueExists(PosixConfig::kConfigKey_VendorId))
+    {
+        err = StoreVendorId(CHIP_DEVICE_CONFIG_DEVICE_VENDOR_ID);
+        SuccessOrExit(err);
+    }
+
+    if (!PosixConfig::ConfigValueExists(PosixConfig::kConfigKey_ProductId))
+    {
+        err = StoreProductId(CHIP_DEVICE_CONFIG_DEVICE_PRODUCT_ID);
+        SuccessOrExit(err);
+    }
 
     if (PosixConfig::ConfigValueExists(PosixConfig::kCounterKey_RebootCount))
     {
@@ -87,29 +102,22 @@ CHIP_ERROR ConfigurationManagerImpl::Init()
 
     if (!PosixConfig::ConfigValueExists(PosixConfig::kCounterKey_BootReason))
     {
-        err = StoreBootReason(EMBER_ZCL_BOOT_REASON_TYPE_UNSPECIFIED);
+        err = StoreBootReason(to_underlying(BootReasonType::kUnspecified));
         SuccessOrExit(err);
     }
 
-    if (!PosixConfig::ConfigValueExists(PosixConfig::kCounterKey_RegulatoryConfig))
+    if (!PosixConfig::ConfigValueExists(PosixConfig::kConfigKey_RegulatoryLocation))
     {
-        uint32_t location = EMBER_ZCL_REGULATORY_LOCATION_TYPE_INDOOR_OUTDOOR;
-        err               = WriteConfigValue(PosixConfig::kCounterKey_RegulatoryConfig, location);
+        uint32_t location = to_underlying(chip::app::Clusters::GeneralCommissioning::RegulatoryLocationType::kIndoor);
+        err               = WriteConfigValue(PosixConfig::kConfigKey_RegulatoryLocation, location);
         SuccessOrExit(err);
     }
 
-    if (!PosixConfig::ConfigValueExists(PosixConfig::kCounterKey_LocationCapability))
+    if (!PosixConfig::ConfigValueExists(PosixConfig::kConfigKey_LocationCapability))
     {
-        uint32_t location = EMBER_ZCL_REGULATORY_LOCATION_TYPE_INDOOR_OUTDOOR;
-        err               = WriteConfigValue(PosixConfig::kCounterKey_LocationCapability, location);
+        uint32_t location = to_underlying(chip::app::Clusters::GeneralCommissioning::RegulatoryLocationType::kIndoorOutdoor);
+        err               = WriteConfigValue(PosixConfig::kConfigKey_LocationCapability, location);
         SuccessOrExit(err);
-    }
-
-    // If the fail-safe was armed when the device last shutdown, initiate a factory reset.
-    if (GetFailSafeArmed(failSafeArmed) == CHIP_NO_ERROR && failSafeArmed)
-    {
-        ChipLogProgress(DeviceLayer, "Detected fail-safe armed on reboot; initiating factory reset");
-        InitiateFactoryReset();
     }
 
     err = CHIP_NO_ERROR;
@@ -120,17 +128,22 @@ exit:
 
 CHIP_ERROR ConfigurationManagerImpl::GetPrimaryWiFiMACAddress(uint8_t * buf)
 {
-    struct ifaddrs * addresses = NULL;
+    struct ifaddrs * addresses = nullptr;
     CHIP_ERROR error           = CHIP_NO_ERROR;
     bool found                 = false;
 
+    // TODO: ideally the buffer size should have been passed as a span, however
+    //       for now use the size that is validated in GenericConfigurationManagerImpl.ipp
+    constexpr size_t kExpectedBufMinSize = ConfigurationManager::kPrimaryMACAddressLength;
+    memset(buf, 0, kExpectedBufMinSize);
+
     VerifyOrExit(getifaddrs(&addresses) == 0, error = CHIP_ERROR_INTERNAL);
-    for (auto addr = addresses; addr != NULL; addr = addr->ifa_next)
+    for (auto addr = addresses; addr != nullptr; addr = addr->ifa_next)
     {
         if ((addr->ifa_addr) && (addr->ifa_addr->sa_family == AF_PACKET) && strncmp(addr->ifa_name, "lo", IFNAMSIZ) != 0)
         {
             struct sockaddr_ll * mac = (struct sockaddr_ll *) addr->ifa_addr;
-            memcpy(buf, mac->sll_addr, mac->sll_halen);
+            memcpy(buf, mac->sll_addr, std::min<size_t>(mac->sll_halen, kExpectedBufMinSize));
             found = true;
             break;
         }
@@ -219,6 +232,11 @@ CHIP_ERROR ConfigurationManagerImpl::ReadConfigValue(Key key, bool & val)
     return PosixConfig::ReadConfigValue(key, val);
 }
 
+CHIP_ERROR ConfigurationManagerImpl::ReadConfigValue(Key key, uint16_t & val)
+{
+    return PosixConfig::ReadConfigValue(key, val);
+}
+
 CHIP_ERROR ConfigurationManagerImpl::ReadConfigValue(Key key, uint32_t & val)
 {
     return PosixConfig::ReadConfigValue(key, val);
@@ -240,6 +258,11 @@ CHIP_ERROR ConfigurationManagerImpl::ReadConfigValueBin(Key key, uint8_t * buf, 
 }
 
 CHIP_ERROR ConfigurationManagerImpl::WriteConfigValue(Key key, bool val)
+{
+    return PosixConfig::WriteConfigValue(key, val);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::WriteConfigValue(Key key, uint16_t val)
 {
     return PosixConfig::WriteConfigValue(key, val);
 }
@@ -304,6 +327,16 @@ void ConfigurationManagerImpl::DoFactoryReset(intptr_t arg)
     // TODO(#742): restart CHIP exe
 }
 
+CHIP_ERROR ConfigurationManagerImpl::StoreVendorId(uint16_t vendorId)
+{
+    return WriteConfigValue(PosixConfig::kConfigKey_VendorId, vendorId);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreProductId(uint16_t productId)
+{
+    return WriteConfigValue(PosixConfig::kConfigKey_ProductId, productId);
+}
+
 CHIP_ERROR ConfigurationManagerImpl::GetRebootCount(uint32_t & rebootCount)
 {
     return ReadConfigValue(PosixConfig::kCounterKey_RebootCount, rebootCount);
@@ -334,11 +367,11 @@ CHIP_ERROR ConfigurationManagerImpl::StoreBootReason(uint32_t bootReason)
     return WriteConfigValue(PosixConfig::kCounterKey_BootReason, bootReason);
 }
 
-CHIP_ERROR ConfigurationManagerImpl::GetRegulatoryConfig(uint8_t & location)
+CHIP_ERROR ConfigurationManagerImpl::GetRegulatoryLocation(uint8_t & location)
 {
     uint32_t value = 0;
 
-    CHIP_ERROR err = ReadConfigValue(PosixConfig::kCounterKey_RegulatoryConfig, value);
+    CHIP_ERROR err = ReadConfigValue(PosixConfig::kConfigKey_RegulatoryLocation, value);
 
     if (err == CHIP_NO_ERROR)
     {
@@ -353,7 +386,7 @@ CHIP_ERROR ConfigurationManagerImpl::GetLocationCapability(uint8_t & location)
 {
     uint32_t value = 0;
 
-    CHIP_ERROR err = ReadConfigValue(PosixConfig::kCounterKey_LocationCapability, value);
+    CHIP_ERROR err = ReadConfigValue(PosixConfig::kConfigKey_LocationCapability, value);
 
     if (err == CHIP_NO_ERROR)
     {
@@ -362,6 +395,11 @@ CHIP_ERROR ConfigurationManagerImpl::GetLocationCapability(uint8_t & location)
     }
 
     return err;
+}
+
+ConfigurationManager & ConfigurationMgrImpl()
+{
+    return ConfigurationManagerImpl::GetDefaultInstance();
 }
 
 } // namespace DeviceLayer

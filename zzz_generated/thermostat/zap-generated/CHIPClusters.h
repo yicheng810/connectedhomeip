@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2021 Project CHIP Authors
+ *    Copyright (c) 2022 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -33,28 +33,20 @@ namespace Controller {
 class DLL_EXPORT IdentifyCluster : public ClusterBase
 {
 public:
-    IdentifyCluster() : ClusterBase(app::Clusters::Identify::Id) {}
+    IdentifyCluster(Messaging::ExchangeManager & exchangeManager, const SessionHandle & session, EndpointId endpoint) :
+        ClusterBase(exchangeManager, session, app::Clusters::Identify::Id, endpoint)
+    {}
     ~IdentifyCluster() {}
+};
 
-    // Cluster Commands
-    CHIP_ERROR Identify(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback, uint16_t identifyTime);
-    CHIP_ERROR IdentifyQuery(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback);
-
-    // Cluster Attributes
-    CHIP_ERROR ReadAttributeIdentifyTime(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback);
-    CHIP_ERROR SubscribeAttributeIdentifyTime(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                              uint16_t minInterval, uint16_t maxInterval);
-    CHIP_ERROR ReportAttributeIdentifyTime(Callback::Cancelable * onReportCallback);
-    CHIP_ERROR ReadAttributeIdentifyType(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback);
-    CHIP_ERROR SubscribeAttributeIdentifyType(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                              uint16_t minInterval, uint16_t maxInterval);
-    CHIP_ERROR ReportAttributeIdentifyType(Callback::Cancelable * onReportCallback);
-    CHIP_ERROR ReadAttributeClusterRevision(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback);
-    CHIP_ERROR SubscribeAttributeClusterRevision(Callback::Cancelable * onSuccessCallback, Callback::Cancelable * onFailureCallback,
-                                                 uint16_t minInterval, uint16_t maxInterval);
-    CHIP_ERROR ReportAttributeClusterRevision(Callback::Cancelable * onReportCallback);
-
-private:
+class DLL_EXPORT OtaSoftwareUpdateProviderCluster : public ClusterBase
+{
+public:
+    OtaSoftwareUpdateProviderCluster(Messaging::ExchangeManager & exchangeManager, const SessionHandle & session,
+                                     EndpointId endpoint) :
+        ClusterBase(exchangeManager, session, app::Clusters::OtaSoftwareUpdateProvider::Id, endpoint)
+    {}
+    ~OtaSoftwareUpdateProviderCluster() {}
 };
 
 } // namespace Controller

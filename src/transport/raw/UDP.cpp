@@ -49,12 +49,14 @@ CHIP_ERROR UDP::Init(UdpListenParameters & params)
     err = params.GetEndPointManager()->NewEndPoint(&mUDPEndPoint);
     SuccessOrExit(err);
 
+    mUDPEndPoint->SetNativeParams(params.GetNativeParams());
+
     ChipLogDetail(Inet, "UDP::Init bind&listen port=%d", params.GetListenPort());
 
     err = mUDPEndPoint->Bind(params.GetAddressType(), Inet::IPAddress::Any, params.GetListenPort(), params.GetInterfaceId());
     SuccessOrExit(err);
 
-    err = mUDPEndPoint->Listen(OnUdpReceive, nullptr /*onReceiveError*/, this);
+    err = mUDPEndPoint->Listen(OnUdpReceive, OnUdpError, this);
     SuccessOrExit(err);
 
     mUDPEndpointType = params.GetAddressType();
@@ -66,7 +68,7 @@ CHIP_ERROR UDP::Init(UdpListenParameters & params)
 exit:
     if (err != CHIP_NO_ERROR)
     {
-        ChipLogProgress(Inet, "Failed to initialize Udp transport: %s", ErrorStr(err));
+        ChipLogProgress(Inet, "Failed to initialize Udp transport: %" CHIP_ERROR_FORMAT, err.Format());
         if (mUDPEndPoint)
         {
             mUDPEndPoint->Free();
@@ -121,8 +123,28 @@ void UDP::OnUdpReceive(Inet::UDPEndPoint * endPoint, System::PacketBufferHandle 
 
     if (err != CHIP_NO_ERROR)
     {
-        ChipLogError(Inet, "Failed to receive UDP message: %s", ErrorStr(err));
+        ChipLogError(Inet, "Failed to receive UDP message: %" CHIP_ERROR_FORMAT, err.Format());
     }
+}
+
+void UDP::OnUdpError(Inet::UDPEndPoint * endPoint, CHIP_ERROR err, const Inet::IPPacketInfo * pktInfo)
+{
+    ChipLogError(Inet, "Failed to receive UDP message: %" CHIP_ERROR_FORMAT, err.Format());
+}
+
+CHIP_ERROR UDP::MulticastGroupJoinLeave(const Transport::PeerAddress & address, bool join)
+{
+    char addressStr[Transport::PeerAddress::kMaxToStringSize];
+    address.ToString(addressStr, Transport::PeerAddress::kMaxToStringSize);
+
+    if (join)
+    {
+        ChipLogProgress(Inet, "Joining Multicast Group with address %s", addressStr);
+        return mUDPEndPoint->JoinMulticastGroup(mUDPEndPoint->GetBoundInterface(), address.GetIPAddress());
+    }
+
+    ChipLogProgress(Inet, "Leaving Multicast Group with address %s", addressStr);
+    return mUDPEndPoint->LeaveMulticastGroup(mUDPEndPoint->GetBoundInterface(), address.GetIPAddress());
 }
 
 } // namespace Transport

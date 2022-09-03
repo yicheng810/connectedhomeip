@@ -27,9 +27,11 @@
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
 #include <platform/ConfigurationManager.h>
-#include <platform/internal/GenericConfigurationManagerImpl.cpp>
+#include <platform/DiagnosticDataProvider.h>
+#include <platform/internal/GenericConfigurationManagerImpl.ipp>
 #include <platform/nxp/k32w/k32w0/K32W0Config.h>
 
+#include "fsl_power.h"
 #include "fsl_reset.h"
 
 namespace chip {
@@ -48,7 +50,41 @@ ConfigurationManagerImpl & ConfigurationManagerImpl::GetDefaultInstance()
 CHIP_ERROR ConfigurationManagerImpl::Init()
 {
     CHIP_ERROR err;
-    bool failSafeArmed;
+    uint32_t rebootCount = 0;
+
+    // Save out software version on first boot
+    if (!K32WConfig::ConfigValueExists(K32WConfig::kConfigKey_SoftwareVersion))
+    {
+        err = StoreSoftwareVersion(CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION);
+        SuccessOrExit(err);
+    }
+
+    if (K32WConfig::ConfigValueExists(K32WConfig::kCounterKey_RebootCount))
+    {
+        err = GetRebootCount(rebootCount);
+        SuccessOrExit(err);
+
+        err = StoreRebootCount(rebootCount + 1);
+        SuccessOrExit(err);
+    }
+    else
+    {
+        // The first boot after factory reset of the Node.
+        err = StoreRebootCount(1);
+        SuccessOrExit(err);
+    }
+
+    if (!K32WConfig::ConfigValueExists(K32WConfig::kCounterKey_TotalOperationalHours))
+    {
+        err = StoreTotalOperationalHours(0);
+        SuccessOrExit(err);
+    }
+
+    if (!K32WConfig::ConfigValueExists(K32WConfig::kCounterKey_BootReason))
+    {
+        err = StoreBootReason(to_underlying(BootReasonType::kUnspecified));
+        SuccessOrExit(err);
+    }
 
     // Initialize the generic implementation base class.
     err = Internal::GenericConfigurationManagerImpl<K32WConfig>::Init();
@@ -56,16 +92,75 @@ CHIP_ERROR ConfigurationManagerImpl::Init()
 
     // TODO: Initialize the global GroupKeyStore object here
 
-    // If the fail-safe was armed when the device last shutdown, initiate a factory reset.
-    if (GetFailSafeArmed(failSafeArmed) == CHIP_NO_ERROR && failSafeArmed)
-    {
-        ChipLogProgress(DeviceLayer, "Detected fail-safe armed on reboot; initiating factory reset");
-        InitiateFactoryReset();
-    }
     err = CHIP_NO_ERROR;
 
 exit:
     return err;
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetRebootCount(uint32_t & rebootCount)
+{
+    return ReadConfigValue(K32WConfig::kCounterKey_RebootCount, rebootCount);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreRebootCount(uint32_t rebootCount)
+{
+    return WriteConfigValue(K32WConfig::kCounterKey_RebootCount, rebootCount);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetTotalOperationalHours(uint32_t & totalOperationalHours)
+{
+    return ReadConfigValue(K32WConfig::kCounterKey_TotalOperationalHours, totalOperationalHours);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreTotalOperationalHours(uint32_t totalOperationalHours)
+{
+    return WriteConfigValue(K32WConfig::kCounterKey_TotalOperationalHours, totalOperationalHours);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetSoftwareVersion(uint32_t & softwareVer)
+{
+    return ReadConfigValue(K32WConfig::kConfigKey_SoftwareVersion, softwareVer);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreSoftwareVersion(uint32_t softwareVer)
+{
+    return WriteConfigValue(K32WConfig::kConfigKey_SoftwareVersion, softwareVer);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::GetBootReason(uint32_t & bootReason)
+{
+    bootReason     = to_underlying(BootReasonType::kUnspecified);
+    uint8_t reason = POWER_GetResetCause();
+
+    if (reason == RESET_UNDEFINED)
+    {
+        bootReason = to_underlying(BootReasonType::kUnspecified);
+    }
+    else if ((reason == RESET_POR) || (reason == RESET_EXT_PIN))
+    {
+        bootReason = to_underlying(BootReasonType::kPowerOnReboot);
+    }
+    else if (reason == RESET_BOR)
+    {
+        bootReason = to_underlying(BootReasonType::kBrownOutReset);
+    }
+    else if (reason == RESET_SW_REQ)
+    {
+        bootReason = to_underlying(BootReasonType::kSoftwareReset);
+    }
+    else if (reason == RESET_WDT)
+    {
+        bootReason = to_underlying(BootReasonType::kSoftwareWatchdogReset);
+        /* Reboot can be due to hardware or software watchdog */
+    }
+
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreBootReason(uint32_t bootReason)
+{
+    return WriteConfigValue(K32WConfig::kCounterKey_BootReason, bootReason);
 }
 
 bool ConfigurationManagerImpl::CanFactoryReset()
@@ -194,6 +289,11 @@ void ConfigurationManagerImpl::DoFactoryReset(intptr_t arg)
     // Restart the system.
     ChipLogProgress(DeviceLayer, "System restarting");
     RESET_SystemReset();
+}
+
+ConfigurationManager & ConfigurationMgrImpl()
+{
+    return ConfigurationManagerImpl::GetDefaultInstance();
 }
 
 } // namespace DeviceLayer

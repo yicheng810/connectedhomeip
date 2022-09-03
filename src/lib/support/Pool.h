@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <lib/support/CHIPMem.h>
 #include <lib/support/CodeUtils.h>
 #include <system/SystemConfig.h>
 
@@ -83,14 +84,19 @@ protected:
 
 public:
     StaticAllocatorBitmap(void * storage, std::atomic<tBitChunkType> * usage, size_t capacity, size_t elementSize);
-    void * Allocate();
-    void Deallocate(void * element);
 
 protected:
+    void * Allocate();
+    void Deallocate(void * element);
     void * At(size_t index) { return static_cast<uint8_t *>(mElements) + mElementSize * index; }
     size_t IndexOf(void * element);
 
-    Loop ForEachActiveObjectInner(void * context, Loop lambda(void * context, void * object));
+    using Lambda = Loop (*)(void * context, void * object);
+    Loop ForEachActiveObjectInner(void * context, Lambda lambda);
+    Loop ForEachActiveObjectInner(void * context, Loop lambda(void * context, const void * object)) const
+    {
+        return const_cast<StaticAllocatorBitmap *>(this)->ForEachActiveObjectInner(context, reinterpret_cast<Lambda>(lambda));
+    }
 
 private:
     void * mElements;
@@ -119,6 +125,10 @@ public:
     {
         return static_cast<LambdaProxy *>(context)->mFunction(static_cast<T *>(target));
     }
+    static Loop ConstCall(void * context, const void * target)
+    {
+        return static_cast<LambdaProxy *>(context)->mFunction(static_cast<const T *>(target));
+    }
 
 private:
     Function mFunction;
@@ -141,7 +151,7 @@ struct HeapObjectListNode
 
 struct HeapObjectList : HeapObjectListNode
 {
-    HeapObjectList() : mIterationDepth(0) { mNext = mPrev = this; }
+    HeapObjectList() { mNext = mPrev = this; }
 
     void Append(HeapObjectListNode * node)
     {
@@ -153,24 +163,20 @@ struct HeapObjectList : HeapObjectListNode
 
     HeapObjectListNode * FindNode(void * object) const;
 
-    Loop ForEachNode(void * context, Loop lambda(void * context, void * object));
+    using Lambda = Loop (*)(void *, void *);
+    Loop ForEachNode(void * context, Lambda lambda);
+    Loop ForEachNode(void * context, Loop lambda(void * context, const void * object)) const
+    {
+        return const_cast<HeapObjectList *>(this)->ForEachNode(context, reinterpret_cast<Lambda>(lambda));
+    }
 
-    size_t mIterationDepth;
+    size_t mIterationDepth         = 0;
+    bool mHaveDeferredNodeRemovals = false;
 };
 
 #endif // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
 
 } // namespace internal
-
-/**
- * Action taken if objects remain allocated when a pool is destroyed.
- */
-enum class OnObjectPoolDestruction
-{
-    AutoRelease,                   ///< Release any objects still allocated.
-    Die,                           ///< Abort if any objects remain allocated.
-    IgnoreUnsafeDoNotUseInNewCode, ///< Do nothing; keep historical behaviour until leaks are fixed.
-};
 
 /**
  * @class ObjectPool
@@ -204,25 +210,12 @@ enum class OnObjectPoolDestruction
  *  @tparam     T   type of element to be allocated.
  *  @tparam     N   a positive integer max number of elements the pool provides.
  */
-template <class T, size_t N, OnObjectPoolDestruction Action = OnObjectPoolDestruction::Die>
+template <class T, size_t N>
 class BitMapObjectPool : public internal::StaticAllocatorBitmap, public internal::PoolCommon<T>
 {
 public:
     BitMapObjectPool() : StaticAllocatorBitmap(mData.mMemory, mUsage, N, sizeof(T)) {}
-    ~BitMapObjectPool()
-    {
-        switch (Action)
-        {
-        case OnObjectPoolDestruction::AutoRelease:
-            ReleaseAll();
-            break;
-        case OnObjectPoolDestruction::Die:
-            VerifyOrDie(Allocated() == 0);
-            break;
-        case OnObjectPoolDestruction::IgnoreUnsafeDoNotUseInNewCode:
-            break;
-        }
-    }
+    ~BitMapObjectPool() { VerifyOrDie(Allocated() == 0); }
 
     template <typename... Args>
     T * CreateObject(Args &&... args)
@@ -230,8 +223,7 @@ public:
         T * element = static_cast<T *>(Allocate());
         if (element != nullptr)
             return new (element) T(std::forward<Args>(args)...);
-        else
-            return nullptr;
+        return nullptr;
     }
 
     void ReleaseObject(T * element)
@@ -249,8 +241,15 @@ public:
      * @brief
      *   Run a functor for each active object in the pool
      *
-     *  @param     function The functor of type `Loop (*)(T*)`, return Loop::Break to break the iteration
-     *  @return    Loop     Returns Break or Finish according to the iteration
+     *  @param     function A functor of type `Loop (*)(T*)`.
+     *                      Return Loop::Break to break the iteration.
+     *                      The only modification the functor is allowed to make
+     *                      to the pool before returning is releasing the
+     *                      object that was passed to the functor.  Any other
+     *                      desired changes need to be made after iteration
+     *                      completes.
+     *  @return    Loop     Returns Break if some call to the functor returned
+     *                      Break.  Otherwise returns Finish.
      *
      * caution
      *   this function is not thread-safe, make sure all usage of the
@@ -263,6 +262,14 @@ public:
                       "The function must take T* and return Loop");
         internal::LambdaProxy<T, Function> proxy(std::forward<Function>(function));
         return ForEachActiveObjectInner(&proxy, &internal::LambdaProxy<T, Function>::Call);
+    }
+    template <typename Function>
+    Loop ForEachActiveObject(Function && function) const
+    {
+        static_assert(std::is_same<Loop, decltype(function(std::declval<const T *>()))>::value,
+                      "The function must take const T* and return Loop");
+        internal::LambdaProxy<T, Function> proxy(std::forward<Function>(function));
+        return ForEachActiveObjectInner(&proxy, &internal::LambdaProxy<T, Function>::ConstCall);
     }
 
 private:
@@ -289,33 +296,36 @@ private:
  *
  *  @tparam     T   type to be allocated.
  */
-template <class T, OnObjectPoolDestruction Action = OnObjectPoolDestruction::Die>
+template <class T>
 class HeapObjectPool : public internal::Statistics, public internal::PoolCommon<T>
 {
 public:
     HeapObjectPool() {}
     ~HeapObjectPool()
     {
-        switch (Action)
-        {
-        case OnObjectPoolDestruction::AutoRelease:
-            ReleaseAll();
-            break;
-        case OnObjectPoolDestruction::Die:
-            VerifyOrDie(Allocated() == 0);
-            break;
-        case OnObjectPoolDestruction::IgnoreUnsafeDoNotUseInNewCode:
-            break;
-        }
+#ifndef __SANITIZE_ADDRESS__
+#ifdef __clang__
+#if __has_feature(address_sanitizer)
+#define __SANITIZE_ADDRESS__ 1
+#endif
+#endif
+#endif
+#if __SANITIZE_ADDRESS__
+        // Free all remaining objects so that ASAN can catch specific use-after-free cases.
+        ReleaseAll();
+#else  // __SANITIZE_ADDRESS__
+       // Verify that no live objects remain, to prevent potential use-after-free.
+        VerifyOrDie(Allocated() == 0);
+#endif // __SANITIZE_ADDRESS__
     }
 
     template <typename... Args>
     T * CreateObject(Args &&... args)
     {
-        T * object = new T(std::forward<Args>(args)...);
+        T * object = Platform::New<T>(std::forward<Args>(args)...);
         if (object != nullptr)
         {
-            auto node = new internal::HeapObjectListNode();
+            auto node = Platform::New<internal::HeapObjectListNode>();
             if (node != nullptr)
             {
                 node->mObject = object;
@@ -327,6 +337,18 @@ public:
         return nullptr;
     }
 
+    /*
+     * This method exists purely to line up with the static allocator version.
+     * Consequently, return a nonsensically large number to normalize comparison
+     * operations that act on this value.
+     */
+    size_t Capacity() const { return SIZE_MAX; }
+
+    /*
+     * This method exists purely to line up with the static allocator version. Heap based object pool will never be exhausted.
+     */
+    bool Exhausted() const { return false; }
+
     void ReleaseObject(T * object)
     {
         if (object != nullptr)
@@ -334,9 +356,21 @@ public:
             internal::HeapObjectListNode * node = mObjects.FindNode(object);
             if (node != nullptr)
             {
-                // Note that the node is not removed here; that is deferred until the end of the next pool iteration.
                 node->mObject = nullptr;
-                delete object;
+                Platform::Delete(object);
+
+                // The node needs to be released immediately if we are not in the middle of iteration.
+                // Otherwise cleanup is deferred until all iteration on this pool completes and it's safe to release nodes.
+                if (mObjects.mIterationDepth == 0)
+                {
+                    node->Remove();
+                    Platform::Delete(node);
+                }
+                else
+                {
+                    mObjects.mHaveDeferredNodeRemovals = true;
+                }
+
                 DecreaseUsage();
             }
         }
@@ -348,8 +382,15 @@ public:
      * @brief
      *   Run a functor for each active object in the pool
      *
-     *  @param     function The functor of type `Loop (*)(T*)`, return Loop::Break to break the iteration
-     *  @return    Loop     Returns Break or Finish according to the iteration
+     *  @param     function A functor of type `Loop (*)(T*)`.
+     *                      Return Loop::Break to break the iteration.
+     *                      The only modification the functor is allowed to make
+     *                      to the pool before returning is releasing the
+     *                      object that was passed to the functor.  Any other
+     *                      desired changes need to be made after iteration
+     *                      completes.
+     *  @return    Loop     Returns Break if some call to the functor returned
+     *                      Break.  Otherwise returns Finish.
      */
     template <typename Function>
     Loop ForEachActiveObject(Function && function)
@@ -358,6 +399,14 @@ public:
                       "The function must take T* and return Loop");
         internal::LambdaProxy<T, Function> proxy(std::forward<Function>(function));
         return mObjects.ForEachNode(&proxy, &internal::LambdaProxy<T, Function>::Call);
+    }
+    template <typename Function>
+    Loop ForEachActiveObject(Function && function) const
+    {
+        static_assert(std::is_same<Loop, decltype(function(std::declval<const T *>()))>::value,
+                      "The function must take const T* and return Loop");
+        internal::LambdaProxy<const T, Function> proxy(std::forward<Function>(function));
+        return mObjects.ForEachNode(&proxy, &internal::LambdaProxy<const T, Function>::ConstCall);
     }
 
 private:
@@ -372,33 +421,39 @@ private:
 
 #endif // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
 
-#if CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
-template <typename T, unsigned int N, OnObjectPoolDestruction Action = OnObjectPoolDestruction::Die>
-using ObjectPool = HeapObjectPool<T, Action>;
-#else  // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
-template <typename T, unsigned int N, OnObjectPoolDestruction Action = OnObjectPoolDestruction::Die>
-using ObjectPool = BitMapObjectPool<T, N, Action>;
-#endif // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
-
+/**
+ * Specify ObjectPool storage allocation.
+ */
 enum class ObjectPoolMem
 {
-    kStatic,
+    /**
+     * Use storage inside the containing scope for both objects and pool management state.
+     */
+    kInline,
 #if CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
-    kDynamic
+    /**
+     * Allocate objects from the heap, with only pool management state in the containing scope.
+     *
+     * For this case, the ObjectPool size parameter is ignored.
+     */
+    kHeap,
+    kDefault = kHeap
+#else  // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
+    kDefault = kInline
 #endif // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
 };
 
-template <typename T, size_t N, ObjectPoolMem P, OnObjectPoolDestruction Action = OnObjectPoolDestruction::Die>
-class MemTypeObjectPool;
+template <typename T, size_t N, ObjectPoolMem P = ObjectPoolMem::kDefault>
+class ObjectPool;
 
-template <typename T, size_t N, OnObjectPoolDestruction Action>
-class MemTypeObjectPool<T, N, ObjectPoolMem::kStatic, Action> : public BitMapObjectPool<T, N, Action>
+template <typename T, size_t N>
+class ObjectPool<T, N, ObjectPoolMem::kInline> : public BitMapObjectPool<T, N>
 {
 };
 
 #if CHIP_SYSTEM_CONFIG_POOL_USE_HEAP
-template <typename T, size_t N, OnObjectPoolDestruction Action>
-class MemTypeObjectPool<T, N, ObjectPoolMem::kDynamic, Action> : public HeapObjectPool<T, Action>
+template <typename T, size_t N>
+class ObjectPool<T, N, ObjectPoolMem::kHeap> : public HeapObjectPool<T>
 {
 };
 #endif // CHIP_SYSTEM_CONFIG_POOL_USE_HEAP

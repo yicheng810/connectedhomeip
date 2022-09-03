@@ -17,29 +17,38 @@
  */
 
 #include "KeypadInputManager.h"
-#include <app/util/af.h>
-#include <app/util/basic-types.h>
-#include <cstddef>
+#include "TvApp-JNI.h"
+#include <app-common/zap-generated/attributes/Accessors.h>
+#include <app-common/zap-generated/ids/Clusters.h>
 #include <lib/support/CHIPJNIError.h>
-#include <lib/support/CodeUtils.h>
 #include <lib/support/JniReferences.h>
 
 using namespace chip;
+using namespace chip::app::Clusters::KeypadInput;
 
-KeypadInputManager KeypadInputManager::sInstance;
-
-EmberAfKeypadInputStatus keypadInputClusterSendKey(EmberAfKeypadInputCecKeyCode keyCode)
+void emberAfKeypadInputClusterInitCallback(EndpointId endpoint)
 {
-    return KeypadInputMgr().SendKey(keyCode);
+    ChipLogProgress(Zcl, "TV Android App: KeypadInput::PostClusterInit");
+    TvAppJNIMgr().PostClusterInit(chip::app::Clusters::KeypadInput::Id, endpoint);
 }
 
-EmberAfKeypadInputStatus KeypadInputManager::SendKey(EmberAfKeypadInputCecKeyCode keyCode)
+void KeypadInputManager::NewManager(jint endpoint, jobject manager)
 {
+    ChipLogProgress(Zcl, "TV Android App: KeypadInput::SetDefaultDelegate");
+    KeypadInputManager * mgr = new KeypadInputManager();
+    mgr->InitializeWithObjects(manager);
+    chip::app::Clusters::KeypadInput::SetDefaultDelegate(static_cast<EndpointId>(endpoint), mgr);
+}
+
+void KeypadInputManager::HandleSendKey(CommandResponseHelper<SendKeyResponseType> & helper, const CecKeyCode & keyCode)
+{
+    Commands::SendKeyResponse::Type response;
+
     jint ret       = -1;
     CHIP_ERROR err = CHIP_NO_ERROR;
     JNIEnv * env   = JniReferences::GetInstance().GetEnvForCurrentThread();
 
-    ChipLogProgress(Zcl, "Received keypadInputClusterSendKey: %d", keyCode);
+    ChipLogProgress(Zcl, "Received keypadInputClusterSendKey: %c", to_underlying(keyCode));
     VerifyOrExit(mKeypadInputManagerObject != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
     VerifyOrExit(mSendKeyMethod != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
     VerifyOrExit(env != NULL, err = CHIP_JNI_ERROR_NO_ENV);
@@ -51,10 +60,13 @@ EmberAfKeypadInputStatus KeypadInputManager::SendKey(EmberAfKeypadInputCecKeyCod
 exit:
     if (err != CHIP_NO_ERROR)
     {
-        return EMBER_ZCL_KEYPAD_INPUT_STATUS_SUCCESS;
+        response.status = chip::app::Clusters::KeypadInput::KeypadInputStatusEnum::kInvalidKeyInCurrentState;
     }
-
-    return static_cast<EmberAfKeypadInputStatus>(ret);
+    else
+    {
+        response.status = static_cast<chip::app::Clusters::KeypadInput::KeypadInputStatusEnum>(ret);
+    }
+    helper.Success(response);
 }
 
 void KeypadInputManager::InitializeWithObjects(jobject managerObject)
@@ -74,4 +86,16 @@ void KeypadInputManager::InitializeWithObjects(jobject managerObject)
         ChipLogError(Zcl, "Failed to access KeypadInputManager 'sendKey' method");
         env->ExceptionClear();
     }
+}
+
+uint32_t KeypadInputManager::GetFeatureMap(chip::EndpointId endpoint)
+{
+    if (endpoint >= EMBER_AF_CONTENT_LAUNCH_CLUSTER_SERVER_ENDPOINT_COUNT)
+    {
+        return mDynamicEndpointFeatureMap;
+    }
+
+    uint32_t featureMap = 0;
+    Attributes::FeatureMap::Get(endpoint, &featureMap);
+    return featureMap;
 }

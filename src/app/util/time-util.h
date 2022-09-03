@@ -40,6 +40,10 @@
 
 #pragma once
 
+#include <inttypes.h>
+
+#include <app/util/af-types.h>
+
 #define SECONDS_IN_MINUTE 60
 #define SECONDS_IN_HOUR 3600
 #define SECONDS_IN_DAY (SECONDS_IN_MINUTE * 60 * 24)
@@ -102,12 +106,6 @@ uint32_t emberAfGetUtcFromTimeStruct(EmberAfTimeStruct * time);
  * a specified UTC time.
  */
 uint8_t emberAfGetWeekdayFromUtc(uint32_t utcTime);
-
-/*
- * @brief Prints out a human readable date form from the given ZCL data type.
- */
-void emberAfPrintDate(const EmberAfDate * date);
-void emberAfPrintDateln(const EmberAfDate * date);
 
 /**
  * @brief Sets current time.

@@ -21,11 +21,10 @@
  *      This file implements unit tests for the ExchangeManager implementation.
  */
 
-#include "TestMessagingLayer.h"
-
 #include <lib/core/CHIPCore.h>
 #include <lib/support/CHIPMem.h>
 #include <lib/support/CodeUtils.h>
+#include <lib/support/UnitTestContext.h>
 #include <lib/support/UnitTestRegistration.h>
 #include <messaging/ExchangeContext.h>
 #include <messaging/ExchangeMgr.h>
@@ -34,7 +33,6 @@
 #include <protocols/Protocols.h>
 #include <transport/SessionManager.h>
 #include <transport/TransportMgr.h>
-#include <transport/raw/tests/NetworkTestHelpers.h>
 
 #include <nlbyteorder.h>
 #include <nlunit-test.h>
@@ -49,7 +47,7 @@ using namespace chip::Inet;
 using namespace chip::Transport;
 using namespace chip::Messaging;
 
-using TestContext = chip::Test::LoopbackMessagingContext<Test::LoopbackTransport>;
+using TestContext = Test::LoopbackMessagingContext;
 
 enum : uint8_t
 {
@@ -57,11 +55,15 @@ enum : uint8_t
     kMsgType_TEST2 = 2,
 };
 
-TestContext sContext;
-
-class MockAppDelegate : public ExchangeDelegate
+class MockAppDelegate : public UnsolicitedMessageHandler, public ExchangeDelegate
 {
 public:
+    CHIP_ERROR OnUnsolicitedMessageReceived(const PayloadHeader & payloadHeader, ExchangeDelegate *& newDelegate) override
+    {
+        newDelegate = this;
+        return CHIP_NO_ERROR;
+    }
+
     CHIP_ERROR OnMessageReceived(ExchangeContext * ec, const PayloadHeader & payloadHeader,
                                  System::PacketBufferHandle && buffer) override
     {
@@ -97,17 +99,13 @@ void CheckNewContextTest(nlTestSuite * inSuite, void * inContext)
     NL_TEST_ASSERT(inSuite, ec1 != nullptr);
     NL_TEST_ASSERT(inSuite, ec1->IsInitiator() == true);
     NL_TEST_ASSERT(inSuite, ec1->GetExchangeId() != 0);
-    auto sessionPeerToLocal = ctx.GetSecureSessionManager().GetSecureSession(ec1->GetSessionHandle());
-    NL_TEST_ASSERT(inSuite, sessionPeerToLocal->GetPeerNodeId() == ctx.GetBobNodeId());
-    NL_TEST_ASSERT(inSuite, sessionPeerToLocal->GetPeerSessionId() == ctx.GetBobKeyId());
+    NL_TEST_ASSERT(inSuite, ec1->GetSessionHandle() == ctx.GetSessionAliceToBob());
     NL_TEST_ASSERT(inSuite, ec1->GetDelegate() == &mockAppDelegate);
 
     ExchangeContext * ec2 = ctx.NewExchangeToAlice(&mockAppDelegate);
     NL_TEST_ASSERT(inSuite, ec2 != nullptr);
     NL_TEST_ASSERT(inSuite, ec2->GetExchangeId() > ec1->GetExchangeId());
-    auto sessionLocalToPeer = ctx.GetSecureSessionManager().GetSecureSession(ec2->GetSessionHandle());
-    NL_TEST_ASSERT(inSuite, sessionLocalToPeer->GetPeerNodeId() == ctx.GetAliceNodeId());
-    NL_TEST_ASSERT(inSuite, sessionLocalToPeer->GetPeerSessionId() == ctx.GetAliceKeyId());
+    NL_TEST_ASSERT(inSuite, ec2->GetSessionHandle() == ctx.GetSessionBobToAlice());
 
     ec1->Close();
     ec2->Close();
@@ -121,7 +119,7 @@ void CheckSessionExpirationBasics(nlTestSuite * inSuite, void * inContext)
     ExchangeContext * ec1 = ctx.NewExchangeToBob(&sendDelegate);
 
     // Expire the session this exchange is supposedly on.
-    ctx.GetExchangeManager().ExpireExchangesForSession(ec1->GetSessionHandle());
+    ec1->GetSessionHandle()->AsSecureSession()->MarkForEviction();
 
     MockAppDelegate receiveDelegate;
     CHIP_ERROR err =
@@ -138,6 +136,9 @@ void CheckSessionExpirationBasics(nlTestSuite * inSuite, void * inContext)
 
     err = ctx.GetExchangeManager().UnregisterUnsolicitedMessageHandlerForType(Protocols::BDX::Id, kMsgType_TEST1);
     NL_TEST_ASSERT(inSuite, err == CHIP_NO_ERROR);
+
+    // recreate closed session.
+    NL_TEST_ASSERT(inSuite, ctx.CreateSessionAliceToBob() == CHIP_NO_ERROR);
 }
 
 void CheckSessionExpirationTimeout(nlTestSuite * inSuite, void * inContext)
@@ -153,10 +154,12 @@ void CheckSessionExpirationTimeout(nlTestSuite * inSuite, void * inContext)
     ctx.DrainAndServiceIO();
     NL_TEST_ASSERT(inSuite, !sendDelegate.IsOnResponseTimeoutCalled);
 
-    // Expire the session this exchange is supposedly on.  This should close the
-    // exchange.
-    ctx.GetExchangeManager().ExpireExchangesForSession(ec1->GetSessionHandle());
+    // Expire the session this exchange is supposedly on.  This should close the exchange.
+    ec1->GetSessionHandle()->AsSecureSession()->MarkForEviction();
     NL_TEST_ASSERT(inSuite, sendDelegate.IsOnResponseTimeoutCalled);
+
+    // recreate closed session.
+    NL_TEST_ASSERT(inSuite, ctx.CreateSessionAliceToBob() == CHIP_NO_ERROR);
 }
 
 void CheckUmhRegistrationTest(nlTestSuite * inSuite, void * inContext)
@@ -244,7 +247,7 @@ nlTestSuite sSuite =
 {
     "Test-CHIP-ExchangeManager",
     &sTests[0],
-    TestContext::InitializeAsync,
+    TestContext::Initialize,
     TestContext::Finalize
 };
 // clang-format on
@@ -256,10 +259,7 @@ nlTestSuite sSuite =
  */
 int TestExchangeMgr()
 {
-    // Run test suit against one context
-    nlTestRunner(&sSuite, &sContext);
-
-    return (nlTestRunnerStats(&sSuite));
+    return chip::ExecuteTestsWithContext<TestContext>(&sSuite);
 }
 
 CHIP_REGISTER_TEST_SUITE(TestExchangeMgr);
