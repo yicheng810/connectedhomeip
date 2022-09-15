@@ -18,7 +18,6 @@
 #import <Foundation/Foundation.h>
 
 #import <Matter/MTRNOCChainIssuer.h>
-#import <Matter/MTROnboardingPayloadParser.h>
 
 @class MTRBaseDevice;
 
@@ -34,10 +33,10 @@ typedef void (^MTRDeviceConnectionCallback)(MTRBaseDevice * _Nullable device, NS
 @property (readonly, nonatomic) BOOL isRunning;
 
 /**
- * Return the Node Id assigned to the controller.  Will return nil if the
+ * Return the Node ID assigned to the controller.  Will return nil if the
  * controller is not running (and hence does not know its node id).
  */
-@property (readonly, nonatomic, nullable) NSNumber * controllerNodeId;
+@property (readonly, nonatomic, nullable) NSNumber * controllerNodeID;
 
 /**
  * Start pairing for a device with the given ID, using the provided setup PIN
@@ -83,7 +82,7 @@ typedef void (^MTRDeviceConnectionCallback)(MTRBaseDevice * _Nullable device, NS
  * after that point if it wants to commission the device.
  */
 - (BOOL)pairDevice:(uint64_t)deviceID onboardingPayload:(NSString *)onboardingPayload error:(NSError * __autoreleasing *)error;
-- (BOOL)commissionDevice:(uint64_t)deviceId
+- (BOOL)commissionDevice:(uint64_t)deviceID
      commissioningParams:(MTRCommissioningParameters *)commissioningParams
                    error:(NSError * __autoreleasing *)error;
 
@@ -93,17 +92,8 @@ typedef void (^MTRDeviceConnectionCallback)(MTRBaseDevice * _Nullable device, NS
 
 - (BOOL)stopDevicePairing:(uint64_t)deviceID error:(NSError * __autoreleasing *)error;
 
-- (nullable MTRBaseDevice *)getDeviceBeingCommissioned:(uint64_t)deviceId error:(NSError * __autoreleasing *)error;
-- (BOOL)getBaseDevice:(uint64_t)deviceID
-                queue:(dispatch_queue_t)queue
-    completionHandler:(MTRDeviceConnectionCallback)completionHandler;
-
-- (BOOL)openPairingWindow:(uint64_t)deviceID duration:(NSUInteger)duration error:(NSError * __autoreleasing *)error;
-- (nullable NSString *)openPairingWindowWithPIN:(uint64_t)deviceID
-                                       duration:(NSUInteger)duration
-                                  discriminator:(NSUInteger)discriminator
-                                       setupPIN:(NSUInteger)setupPIN
-                                          error:(NSError * __autoreleasing *)error;
+- (nullable MTRBaseDevice *)getDeviceBeingCommissioned:(uint64_t)deviceID error:(NSError * __autoreleasing *)error;
+- (BOOL)getBaseDevice:(uint64_t)deviceID queue:(dispatch_queue_t)queue completion:(MTRDeviceConnectionCallback)completion;
 
 /**
  * Controllers are created via the MTRControllerFactory object.
@@ -137,10 +127,10 @@ typedef void (^MTRDeviceConnectionCallback)(MTRBaseDevice * _Nullable device, NS
 /**
  * Return the attestation challenge for the secure session of the device being commissioned.
  *
- * Attempts to retrieve the generated attestation challenge from a commissionee with the given Device ID.
+ * Attempts to retrieve the attestation challenge for a commissionee with the given Device ID.
  * Returns nil if given Device ID does not match an active commissionee, or if a Secure Session is not availale.
  */
-- (nullable NSData *)generateAttestationChallengeForDeviceId:(uint64_t)deviceId;
+- (nullable NSData *)fetchAttestationChallengeForDeviceID:(uint64_t)deviceID;
 
 /**
  * Compute a PASE verifier and passcode ID for the desired setup pincode.
@@ -148,8 +138,11 @@ typedef void (^MTRDeviceConnectionCallback)(MTRBaseDevice * _Nullable device, NS
  * @param[in] setupPincode    The desired PIN code to use
  * @param[in] iterations      The number of iterations to use when generating the verifier
  * @param[in] salt            The 16-byte salt for verifier computation
+ *
+ * Returns nil on errors (e.g. salt has the wrong size), otherwise the computed
+ * verifier bytes.
  */
-- (nullable NSData *)computePaseVerifier:(uint32_t)setupPincode iterations:(uint32_t)iterations salt:(NSData *)salt;
++ (nullable NSData *)computePaseVerifier:(uint32_t)setupPincode iterations:(uint32_t)iterations salt:(NSData *)salt;
 
 /**
  * Shutdown the controller. Calls to shutdown after the first one are NO-OPs.

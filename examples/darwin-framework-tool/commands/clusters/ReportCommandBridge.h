@@ -56,11 +56,11 @@ public:
         MTRReadParams * params = [[MTRReadParams alloc] init];
         params.fabricFiltered = mFabricFiltered.HasValue() ? [NSNumber numberWithBool:mFabricFiltered.Value()] : nil;
         [device
-            readAttributeWithEndpointId:[NSNumber numberWithUnsignedShort:endpointId]
-                              clusterId:[NSNumber numberWithUnsignedInteger:mClusterId]
-                            attributeId:[NSNumber numberWithUnsignedInteger:mAttributeId]
+            readAttributeWithEndpointID:[NSNumber numberWithUnsignedShort:endpointId]
+                              clusterID:[NSNumber numberWithUnsignedInteger:mClusterId]
+                            attributeID:[NSNumber numberWithUnsignedInteger:mAttributeId]
                                  params:params
-                            clientQueue:callbackQueue
+                                  queue:callbackQueue
                              completion:^(NSArray<NSDictionary<NSString *, id> *> * _Nullable values, NSError * _Nullable error) {
                                  if (error != nil) {
                                      LogNSError("Error reading attribute", error);
@@ -129,13 +129,13 @@ public:
             = mKeepSubscriptions.HasValue() ? [NSNumber numberWithBool:mKeepSubscriptions.Value()] : nil;
         params.autoResubscribe = mAutoResubscribe.HasValue() ? [NSNumber numberWithBool:mAutoResubscribe.Value()] : nil;
 
-        [device subscribeAttributeWithEndpointId:[NSNumber numberWithUnsignedShort:endpointId]
-            clusterId:[NSNumber numberWithUnsignedInteger:mClusterId]
-            attributeId:[NSNumber numberWithUnsignedInteger:mAttributeId]
+        [device subscribeAttributeWithEndpointID:[NSNumber numberWithUnsignedShort:endpointId]
+            clusterID:[NSNumber numberWithUnsignedInteger:mClusterId]
+            attributeID:[NSNumber numberWithUnsignedInteger:mAttributeId]
             minInterval:[NSNumber numberWithUnsignedInteger:mMinInterval]
             maxInterval:[NSNumber numberWithUnsignedInteger:mMaxInterval]
             params:params
-            clientQueue:callbackQueue
+            queue:callbackQueue
             reportHandler:^(NSArray<NSDictionary<NSString *, id> *> * _Nullable values, NSError * _Nullable error) {
                 if (values) {
                     for (id item in values) {
@@ -198,10 +198,10 @@ public:
         params.autoResubscribe = mAutoResubscribe.HasValue() ? [NSNumber numberWithBool:mAutoResubscribe.Value()] : nil;
 
         [device subscribeWithQueue:callbackQueue
-            minInterval:mMinInterval
-            maxInterval:mMaxInterval
+            minInterval:@(mMinInterval)
+            maxInterval:@(mMaxInterval)
             params:params
-            cacheContainer:nil
+            attributeCacheContainer:nil
             attributeReportHandler:^(NSArray * value) {
                 SetCommandExitStatus(CHIP_NO_ERROR);
             }
