@@ -126,12 +126,12 @@ extern NSString * const MTRArrayValueType;
 + (instancetype)new NS_UNAVAILABLE;
 
 /**
- * Initialize the device object with the given node id and controller.  This
+ * Create a device object with the given node id and controller.  This
  * will always succeed, even if there is no such node id on the controller's
  * fabric, but attempts to actually use the MTRBaseDevice will fail
  * (asynchronously) in that case.
  */
-- (instancetype)initWithNodeID:(NSNumber *)nodeID controller:(MTRDeviceController *)controller;
++ (instancetype)deviceWithNodeID:(NSNumber *)nodeID controller:(MTRDeviceController *)controller;
 
 /**
  * Subscribe to receive attribute reports for everything (all endpoints, all
@@ -173,9 +173,7 @@ extern NSString * const MTRArrayValueType;
  * attempts fail.
  */
 - (void)subscribeWithQueue:(dispatch_queue_t)queue
-                minInterval:(NSNumber *)minInterval
-                maxInterval:(NSNumber *)maxInterval
-                     params:(MTRSubscribeParams * _Nullable)params
+                     params:(MTRSubscribeParams *)params
     attributeCacheContainer:(MTRAttributeCacheContainer * _Nullable)attributeCacheContainer
      attributeReportHandler:(MTRDeviceReportHandler _Nullable)attributeReportHandler
          eventReportHandler:(MTRDeviceReportHandler _Nullable)eventReportHandler
@@ -184,14 +182,21 @@ extern NSString * const MTRArrayValueType;
     resubscriptionScheduled:(MTRDeviceResubscriptionScheduledHandler _Nullable)resubscriptionScheduled;
 
 /**
- * Read attribute in a designated attribute path
+ * Reads the given attribute path from the device.
+ *
+ * nil values for endpointID, clusterID, attributeID indicate wildcards
+ * (e.g. nil attributeID means "read all the attributes from the endpoint(s) and
+ * cluster(s) that match endpointID/clusterID").
+ *
+ * A non-nil attributeID along with a nil clusterID will only succeed if the
+ * attribute ID is for a global attribute that applies to all clusters.
  */
-- (void)readAttributeWithEndpointID:(NSNumber * _Nullable)endpointID
-                          clusterID:(NSNumber * _Nullable)clusterID
-                        attributeID:(NSNumber * _Nullable)attributeID
-                             params:(MTRReadParams * _Nullable)params
-                              queue:(dispatch_queue_t)queue
-                         completion:(MTRDeviceResponseHandler)completion;
+- (void)readAttributePathWithEndpointID:(NSNumber * _Nullable)endpointID
+                              clusterID:(NSNumber * _Nullable)clusterID
+                            attributeID:(NSNumber * _Nullable)attributeID
+                                 params:(MTRReadParams * _Nullable)params
+                                  queue:(dispatch_queue_t)queue
+                             completion:(MTRDeviceResponseHandler)completion;
 
 /**
  * Write to attribute in a designated attribute path
@@ -203,8 +208,8 @@ extern NSString * const MTRArrayValueType;
  *
  * @param completion  response handler will receive either values or error.
  *
- *                    Received values are an NSArray object with response-value element as described in
- *                    readAttributeWithEndpointID:clusterID:attributeID:queue:completion:.
+ *                    Received values are documented in the definition of
+ *                    MTRDeviceResponseHandler.
  */
 - (void)writeAttributeWithEndpointID:(NSNumber *)endpointID
                            clusterID:(NSNumber *)clusterID
@@ -235,17 +240,22 @@ extern NSString * const MTRArrayValueType;
                          completion:(MTRDeviceResponseHandler)completion;
 
 /**
- * Subscribe an attribute in a designated attribute path
+ * Subscribes to the given attribute path on the device.
+ *
+ * nil values for endpointID, clusterID, attributeID indicate wildcards
+ * (e.g. nil attributeID means "read all the attributes from the endpoint(s) and
+ * cluster(s) that match endpointID/clusterID").
+ *
+ * A non-nil attributeID along with a nil clusterID will only succeed if the
+ * attribute ID is for a global attribute that applies to all clusters.
  */
-- (void)subscribeAttributeWithEndpointID:(NSNumber * _Nullable)endpointID
-                               clusterID:(NSNumber * _Nullable)clusterID
-                             attributeID:(NSNumber * _Nullable)attributeID
-                             minInterval:(NSNumber *)minInterval
-                             maxInterval:(NSNumber *)maxInterval
-                                  params:(MTRSubscribeParams * _Nullable)params
-                                   queue:(dispatch_queue_t)queue
-                           reportHandler:(MTRDeviceResponseHandler)reportHandler
-                 subscriptionEstablished:(MTRSubscriptionEstablishedHandler _Nullable)subscriptionEstablished;
+- (void)subscribeAttributePathWithEndpointID:(NSNumber * _Nullable)endpointID
+                                   clusterID:(NSNumber * _Nullable)clusterID
+                                 attributeID:(NSNumber * _Nullable)attributeID
+                                      params:(MTRSubscribeParams *)params
+                                       queue:(dispatch_queue_t)queue
+                               reportHandler:(MTRDeviceResponseHandler)reportHandler
+                     subscriptionEstablished:(MTRSubscriptionEstablishedHandler _Nullable)subscriptionEstablished;
 
 /**
  * Deregister all local report handlers for a remote device
@@ -278,10 +288,26 @@ extern NSString * const MTRArrayValueType;
 
 @end
 
-@interface MTRAttributePath : NSObject <NSCopying>
-@property (nonatomic, readonly, strong, nonnull) NSNumber * endpoint;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * cluster;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * attribute;
+/**
+ * A path indicating a specific cluster on a device (i.e. without any
+ * wildcards).
+ */
+@interface MTRClusterPath : NSObject <NSCopying>
+@property (nonatomic, readonly, copy) NSNumber * endpoint;
+@property (nonatomic, readonly, copy) NSNumber * cluster;
+
++ (instancetype)clusterPathWithEndpointID:(NSNumber *)endpointID clusterID:(NSNumber *)clusterID;
+
+- (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
+@end
+
+/**
+ * A path indicating a specific attribute on a device (i.e. without any
+ * wildcards).
+ */
+@interface MTRAttributePath : MTRClusterPath <NSCopying>
+@property (nonatomic, readonly, copy) NSNumber * attribute;
 
 + (instancetype)attributePathWithEndpointID:(NSNumber *)endpointID
                                   clusterID:(NSNumber *)clusterID
@@ -291,10 +317,13 @@ extern NSString * const MTRArrayValueType;
 + (instancetype)new NS_UNAVAILABLE;
 @end
 
-@interface MTREventPath : NSObject
-@property (nonatomic, readonly, strong, nonnull) NSNumber * endpoint;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * cluster;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * event;
+/**
+ * A path indicating a specific event that can be emitted on a device
+ * (i.e. without any wildcards).  There can be multiple instances of actual
+ * events for a given event path.
+ */
+@interface MTREventPath : MTRClusterPath <NSCopying>
+@property (nonatomic, readonly, copy) NSNumber * event;
 
 + (instancetype)eventPathWithEndpointID:(NSNumber *)endpointID clusterID:(NSNumber *)clusterID eventID:(NSNumber *)eventID;
 
@@ -302,10 +331,12 @@ extern NSString * const MTRArrayValueType;
 + (instancetype)new NS_UNAVAILABLE;
 @end
 
-@interface MTRCommandPath : NSObject
-@property (nonatomic, readonly, strong, nonnull) NSNumber * endpoint;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * cluster;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * command;
+/**
+ * A path indicating a specific command on a device (i.e. without any
+ * wildcards).
+ */
+@interface MTRCommandPath : MTRClusterPath <NSCopying>
+@property (nonatomic, readonly, copy) NSNumber * command;
 
 + (instancetype)commandPathWithEndpointID:(NSNumber *)endpointID clusterID:(NSNumber *)clusterID commandID:(NSNumber *)commandID;
 
@@ -314,25 +345,27 @@ extern NSString * const MTRArrayValueType;
 @end
 
 @interface MTRAttributeReport : NSObject
-@property (nonatomic, readonly, strong, nonnull) MTRAttributePath * path;
+@property (nonatomic, readonly, copy) MTRAttributePath * path;
 // value is nullable because nullable attributes can have nil as value.
-@property (nonatomic, readonly, strong, nullable) id value;
+@property (nonatomic, readonly, copy, nullable) id value;
 // If this specific path resulted in an error, the error (in the
 // MTRInteractionErrorDomain or MTRErrorDomain) that corresponds to this
 // path.
-@property (nonatomic, readonly, strong, nullable) NSError * error;
+@property (nonatomic, readonly, copy, nullable) NSError * error;
 @end
 
 @interface MTREventReport : NSObject
-@property (nonatomic, readonly, strong, nonnull) MTREventPath * path;
-@property (nonatomic, readonly, strong, nonnull) NSNumber * eventNumber; // chip::EventNumber type (uint64_t)
-@property (nonatomic, readonly, strong, nonnull) NSNumber * priority; // chip::app::PriorityLevel type (uint8_t)
-@property (nonatomic, readonly, strong, nonnull) NSNumber * timestamp; // chip::app::Timestamp.mValue type (uint64_t)
-@property (nonatomic, readonly, strong, nullable) id value;
+@property (nonatomic, readonly, copy) MTREventPath * path;
+@property (nonatomic, readonly, copy) NSNumber * eventNumber; // EventNumber type (uint64_t)
+@property (nonatomic, readonly, copy) NSNumber * priority; // PriorityLevel type (uint8_t)
+@property (nonatomic, readonly, copy) NSNumber * timestamp; // Timestamp type (uint64_t)
+// An instance of one of the event payload interfaces.
+@property (nonatomic, readonly, copy) id value;
+
 // If this specific path resulted in an error, the error (in the
 // MTRInteractionErrorDomain or MTRErrorDomain) that corresponds to this
 // path.
-@property (nonatomic, readonly, strong, nullable) NSError * error;
+@property (nonatomic, readonly, copy, nullable) NSError * error;
 @end
 
 NS_ASSUME_NONNULL_END

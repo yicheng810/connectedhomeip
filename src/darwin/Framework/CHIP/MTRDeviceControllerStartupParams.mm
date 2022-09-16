@@ -30,7 +30,7 @@ using namespace chip;
 
 @implementation MTRDeviceControllerStartupParams
 
-- (instancetype)initWithSigningKeypair:(id<MTRKeypair>)nocSigner fabricID:(NSNumber *)fabricID ipk:(NSData *)ipk
+- (instancetype)initWithIPK:(NSData *)ipk fabricID:(NSNumber *)fabricID nocSigner:(id<MTRKeypair>)nocSigner
 {
     if (!(self = [super init])) {
         return nil;
@@ -48,11 +48,11 @@ using namespace chip;
     return self;
 }
 
-- (instancetype)initWithOperationalKeypair:(id<MTRKeypair>)operationalKeypair
-                    operationalCertificate:(NSData *)operationalCertificate
-                   intermediateCertificate:(nullable NSData *)intermediateCertificate
-                           rootCertificate:(NSData *)rootCertificate
-                                       ipk:(NSData *)ipk
+- (instancetype)initWithIPK:(NSData *)ipk
+         operationalKeypair:(id<MTRKeypair>)operationalKeypair
+     operationalCertificate:(MTRCertificateDERBytes *)operationalCertificate
+    intermediateCertificate:(MTRCertificateDERBytes * _Nullable)intermediateCertificate
+            rootCertificate:(MTRCertificateDERBytes *)rootCertificate
 {
     if (!(self = [super init])) {
         return nil;
@@ -179,10 +179,10 @@ static NSData * _Nullable MatterCertToX509Data(const ByteSpan & cert)
 
     if (self.rootCertificate == nil) {
         NSError * error;
-        self.rootCertificate = [MTRCertificates generateRootCertificate:self.nocSigner
-                                                               issuerID:nil
-                                                               fabricID:self.fabricID
-                                                                  error:&error];
+        self.rootCertificate = [MTRCertificates createRootCertificate:self.nocSigner
+                                                             issuerID:nil
+                                                             fabricID:self.fabricID
+                                                                error:&error];
         if (error != nil || self.rootCertificate == nil) {
             MTR_LOG_ERROR("Failed to generate root certificate: %@", error);
             return nil;
