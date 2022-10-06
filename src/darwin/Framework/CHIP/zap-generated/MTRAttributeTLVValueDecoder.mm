@@ -2538,8 +2538,8 @@ id MTRDecodeAttributeValue(const ConcreteAttributePath & aPath, TLV::TLVReader &
                 auto iter_0 = cppValue.begin();
                 while (iter_0.Next()) {
                     auto & entry_0 = iter_0.GetValue();
-                    MTROtaSoftwareUpdateRequestorClusterProviderLocation * newElement_0;
-                    newElement_0 = [MTROtaSoftwareUpdateRequestorClusterProviderLocation new];
+                    MTROTASoftwareUpdateRequestorClusterProviderLocation * newElement_0;
+                    newElement_0 = [MTROTASoftwareUpdateRequestorClusterProviderLocation new];
                     newElement_0.providerNodeID = [NSNumber numberWithUnsignedLongLong:entry_0.providerNodeID];
                     newElement_0.endpoint = [NSNumber numberWithUnsignedShort:entry_0.endpoint];
                     newElement_0.fabricIndex = [NSNumber numberWithUnsignedChar:entry_0.fabricIndex];
@@ -17447,6 +17447,17 @@ id MTRDecodeAttributeValue(const ConcreteAttributePath & aPath, TLV::TLVReader &
             } else {
                 value = [NSNumber numberWithShort:cppValue.Value()];
             }
+            return value;
+        }
+        case Attributes::WriteOnlyInt8u::Id: {
+            using TypeInfo = Attributes::WriteOnlyInt8u::TypeInfo;
+            TypeInfo::DecodableType cppValue;
+            *aError = DataModel::Decode(aReader, cppValue);
+            if (*aError != CHIP_NO_ERROR) {
+                return nil;
+            }
+            NSNumber * _Nonnull value;
+            value = [NSNumber numberWithUnsignedChar:cppValue];
             return value;
         }
         case Attributes::GeneratedCommandList::Id: {
