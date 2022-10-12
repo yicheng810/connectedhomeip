@@ -176,13 +176,12 @@ CHIP_ERROR KeyValueStoreManagerImpl::EraseAll(void)
 
 KeyValueStoreManagerImpl::KeyStorage::KeyStorage(const char * key) : mValueSize(0)
 {
+    memset(mKey, 0, sizeof(mKey));
+
     if (key != NULL)
     {
-        Platform::CopyString(mKey, key);
-    }
-    else
-    {
-        mKey[0] = 0;
+        /* Null-terminated key isn't needed by strncmp in IsMatchKey */
+        strncpy(mKey, key, sizeof(mKey));
     }
 }
 
