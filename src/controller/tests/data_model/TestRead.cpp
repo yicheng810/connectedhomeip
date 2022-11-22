@@ -427,11 +427,11 @@ void TestReadInteraction::TestReadSubscribeAttributeResponseWithCache(nlTestSuit
     chip::app::ClusterStateCache cache(delegate);
 
     chip::app::EventPathParams eventPathParams[100];
-    for (uint32_t index = 0; index < 100; index++)
+    for (auto & eventPathParam : eventPathParams)
     {
-        eventPathParams[index].mEndpointId = Test::kMockEndpoint3;
-        eventPathParams[index].mClusterId  = Test::MockClusterId(2);
-        eventPathParams[index].mEventId    = 0;
+        eventPathParam.mEndpointId = Test::kMockEndpoint3;
+        eventPathParam.mClusterId  = Test::MockClusterId(2);
+        eventPathParam.mEventId    = 0;
     }
 
     chip::app::ReadPrepareParams readPrepareParams(ctx.GetSessionBobToAlice());
@@ -2643,8 +2643,8 @@ void TestReadInteraction::TestReadHandler_MultipleSubscriptionsWithDataVersionFi
             numSuccessCalls == (app::InteractionModelEngine::kReadHandlerPoolSize + 1);
     });
 
-    ChipLogError(Zcl, "Success call cnt: %u (expect %u) subscription cnt: %u (expect %u)", numSuccessCalls,
-                 uint32_t(app::InteractionModelEngine::kReadHandlerPoolSize + 1), numSubscriptionEstablishedCalls,
+    ChipLogError(Zcl, "Success call cnt: %" PRIu32 " (expect %" PRIu32 ") subscription cnt: %" PRIu32 " (expect %" PRIu32 ")",
+                 numSuccessCalls, uint32_t(app::InteractionModelEngine::kReadHandlerPoolSize + 1), numSubscriptionEstablishedCalls,
                  uint32_t(app::InteractionModelEngine::kReadHandlerPoolSize + 1));
 
     NL_TEST_ASSERT(apSuite, numSuccessCalls == (app::InteractionModelEngine::kReadHandlerPoolSize + 1));

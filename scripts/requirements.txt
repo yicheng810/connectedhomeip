@@ -11,6 +11,9 @@ virtualenv
 # bouffalolab
 -r requirements.bouffalolab.txt
 
+# openiotsdk
+-r requirements.openiotsdk.txt
+
 # Infineon
 -r requirements.infineon.txt
 
