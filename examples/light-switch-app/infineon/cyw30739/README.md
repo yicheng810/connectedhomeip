@@ -17,8 +17,6 @@ An example showing the use of Matter on the Infineon CYW30739 platform.
         -   [Run Flash Script](#run-flash-script)
     -   [Running the Complete Example](#running-the-complete-example)
 
----
-
 ## Introduction
 
 The CYW30739 light switch example provides a baseline demonstration of a on-off
@@ -132,12 +130,7 @@ Put the CYW30739 in to the recovery mode before running the flash script.
         -  'switch groups onoff off'    : Sends On group command to bound group
         -  'switch groups onoff toggle' : Sends On group command to bound group
 
--   You can provision and control the Chip device using the python controller,
-    Chip tool standalone, Android or iOS app
-
-    [Python Controller](https://github.com/project-chip/connectedhomeip/blob/master/src/controller/python/README.md)
-
-    Here is an example with the Python controller:
+-   Here is an example with the CHIPTool for unicast commands only:
 
     ```bash
     chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
@@ -145,31 +138,67 @@ Put the CYW30739 in to the recovery mode before running the flash script.
     chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [<chip-tool-node-id>], "targets": null }{"fabricIndex": 1, "privilege": 3, "authMode": 2, "subjects": [<light-switch-node-id>], "targets": null }]' <lighting-node-id> 0
 
     chip-tool binding write binding '[{"fabricIndex": 1, "node": <lighting-node-id>, "endpoint": 1, "cluster":6}]' <light-switch-node-id> 1
-
-    example: [lighting-node-id : 1, light-switch-node-id : 2]
-    ./apps/chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [112233], "targets": null}, {"fabricIndex": 1,
-    "privilege": 3, "authMode": 2, "subjects": [2], "targets": [{"cluster": 6, "endpoint": 1, "deviceType": null}]}]' 1 0
-
-    ./apps/chip-tool binding write binding '[{"fabricIndex": 1, "node": 1, "endpoint": 1, "cluster": 6}' 2 1
     ```
 
-    Here is an example with the CHIPTool for groups commands only:
+    Example: After pairing successfully [lighting-node-id : 1,
+    light-switch-node-id : 2]
+
+    ```bash
+    chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [112233], "targets": null}, {"fabricIndex": 1,
+    "privilege": 3, "authMode": 2, "subjects": [2], "targets": [{"cluster": 6, "endpoint": 1, "deviceType": null}]}]' 1 0
+
+    chip-tool binding write binding '[{"fabricIndex": 1, "node": 1, "endpoint": 1, "cluster": 6}' 2 1
+    ```
+
+-   Here is an example with the CHIPTool for groups commands only:
+
+    Pairing the device
 
     ```bash
     chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
+    ```
 
+    You can use a series of commands after pairing successfully. Here is a
+    lighting device (node 1) and a light-switch device (node 2) for connection
+    demonstration.
+
+    ```bash
+    chip-tool groupkeymanagement key-set-write '{"groupKeySetID": 417, "groupKeySecurityPolicy": 0, "epochKey0":"a0a1a2a3a4a5a6a7a8a9aaabacadaeaf", "epochStartTime0": 1110000,"epochKey1":"b0b1b2b3b4b5b6b7b8b9babbbcbdbebf", "epochStartTime1":1110001,"epochKey2":"c0c1c2c3c4c5c6c7c8c9cacbcccdcecf", "epochStartTime2": 1110002 }' 1 0
+
+    chip-tool groupkeymanagement write group-key-map '[{"groupId": 257, "groupKeySetID": 417, "fabricIndex": 1}]' 1 0
+
+    chip-tool groups add-group 257 demo 1 1
+
+    chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": null, "targets": null}, {"fabricIndex": 1, "privilege": 3, "authMode": 3, "subjects": [257], "targets": null}]' 1 0
+
+    chip-tool groupkeymanagement key-set-write '{"groupKeySetID": 417, "groupKeySecurityPolicy": 0, "epochKey0":"a0a1a2a3a4a5a6a7a8a9aaabacadaeaf", "epochStartTime0": 1110000,"epochKey1":"b0b1b2b3b4b5b6b7b8b9babbbcbdbebf", "epochStartTime1":1110001,"epochKey2":"c0c1c2c3c4c5c6c7c8c9cacbcccdcecf", "epochStartTime2": 1110002 }' 2 0
+
+    chip-tool groupkeymanagement write group-key-map '[{"groupId": 257, "groupKeySetID": 417, "fabricIndex": 1}]' 2 0
+
+    chip-tool groups add-group 257 demo 2 1
+
+    chip-tool binding write binding '[{"fabricIndex": 1, "group": 257}]' 2 1
+    ```
+
+    Or you can use TestGroupDemoConfig after pairing successfully
+
+    ```bash
     chip-tool tests TestGroupDemoConfig --nodeId <light-switch-node-id>
 
     chip-tool tests TestGroupDemoConfig --nodeId <lighting-node-id>
 
     chip-tool binding write binding '[{"fabricIndex": 1, "group": 257}]' <light-switch-node-id> 1
+    ```
 
-    example: [lighting-node-id : 1, light-switch-node-id : 2]
-    ./apps/chip-tool tests TestGroupDemoConfig --nodeId 2
+    Example: After pairing successfully [lighting-node-id : 1,
+    light-switch-node-id : 2]
 
-    ./apps/chip-tool tests TestGroupDemoConfig --nodeId 1
+    ```bash
+    chip-tool tests TestGroupDemoConfig --nodeId 2
 
-    ./apps/chip-tool binding write binding '[{"fabricIndex": 1, "group": 257}]' 2 1
+    chip-tool tests TestGroupDemoConfig --nodeId 1
+
+    chip-tool binding write binding '[{"fabricIndex": 1, "group": 257}]' 2 1
     ```
 
     To run the example with unicast and groups commands, run the group
@@ -183,5 +212,5 @@ Put the CYW30739 in to the recovery mode before running the flash script.
     commissioning
 
     ```bash
-    ./connectedhomeip/out/chip-tool/chip-tool accesscontrol read acl <nodeid> 0
+    chip-tool accesscontrol read acl <nodeid> 0
     ```
