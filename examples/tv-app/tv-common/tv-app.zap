@@ -1490,7 +1490,7 @@
           "name": "OTA Software Update Provider",
           "code": 41,
           "mfgCode": null,
-          "define": "OTA_PROVIDER_CLUSTER",
+          "define": "OTA_SOFTWARE_UPDATE_PROVIDER_CLUSTER",
           "side": "client",
           "enabled": 0,
           "commands": [
@@ -1542,7 +1542,7 @@
           "name": "OTA Software Update Provider",
           "code": 41,
           "mfgCode": null,
-          "define": "OTA_PROVIDER_CLUSTER",
+          "define": "OTA_SOFTWARE_UPDATE_PROVIDER_CLUSTER",
           "side": "server",
           "enabled": 1,
           "commands": [
@@ -6921,7 +6921,7 @@
           ]
         },
         {
-          "name": "Test Cluster",
+          "name": "Unit Testing",
           "code": 4294048773,
           "mfgCode": null,
           "define": "TEST_CLUSTER",
@@ -6973,7 +6973,7 @@
           ]
         },
         {
-          "name": "Test Cluster",
+          "name": "Unit Testing",
           "code": 4294048773,
           "mfgCode": null,
           "define": "TEST_CLUSTER",
@@ -9219,7 +9219,7 @@
           ]
         },
         {
-          "name": "Test Cluster",
+          "name": "Unit Testing",
           "code": 4294048773,
           "mfgCode": null,
           "define": "TEST_CLUSTER",
@@ -9271,7 +9271,7 @@
           ]
         },
         {
-          "name": "Test Cluster",
+          "name": "Unit Testing",
           "code": 4294048773,
           "mfgCode": null,
           "define": "TEST_CLUSTER",

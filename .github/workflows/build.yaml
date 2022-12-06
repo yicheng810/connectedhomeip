@@ -32,7 +32,7 @@ jobs:
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: connectedhomeip/chip-build:0.6.05
+            image: connectedhomeip/chip-build:0.6.06
             volumes:
                 - "/tmp/log_output:/tmp/test_logs"
             options: --privileged --sysctl "net.ipv6.conf.all.disable_ipv6=0
@@ -47,7 +47,7 @@ jobs:
               env:
                   CONCURRENCY_CONTEXT: ${{ github.ref }}-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.number) || (github.event_name == 'workflow_dispatch' && github.run_number) || github.sha }}
               run: echo "$CONCURRENCY_CONTEXT"
-            - uses: Wandalen/wretry.action@v1.0.15
+            - uses: Wandalen/wretry.action@v1.0.36
               name: Checkout
               with:
                   action: actions/checkout@v3
@@ -66,7 +66,7 @@ jobs:
               timeout-minutes: 10
               run: scripts/build/gn_bootstrap.sh
             - name: Uploading bootstrap logs
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ always() && !env.ACT }}
               with:
                   name: bootstrap-logs
@@ -105,7 +105,7 @@ jobs:
               timeout-minutes: 20
               run: scripts/run_in_build_env.sh "ninja -C ./out"
             - name: Uploading core files
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ failure() && !env.ACT }}
               with:
                   name: crash-core-linux-gcc-debug
@@ -118,7 +118,7 @@ jobs:
             # If re-enabling, some subset of this should be picked
             #
             # - name: Uploading objdir for debugging
-            #   uses: actions/upload-artifact@v2
+            #   uses: actions/upload-artifact@v3
             #   if: ${{ failure() && !env.ACT }}
             #   with:
             #       name: crash-objdir-linux-gcc-debug
@@ -133,7 +133,7 @@ jobs:
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: connectedhomeip/chip-build:0.6.05
+            image: connectedhomeip/chip-build:0.6.06
             volumes:
                 - "/tmp/log_output:/tmp/test_logs"
             options: --privileged --sysctl "net.ipv6.conf.all.disable_ipv6=0
@@ -148,7 +148,7 @@ jobs:
               env:
                   CONCURRENCY_CONTEXT: ${{ github.ref }}-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.number) || (github.event_name == 'workflow_dispatch' && github.run_number) || github.sha }}
               run: echo "$CONCURRENCY_CONTEXT"
-            - uses: Wandalen/wretry.action@v1.0.15
+            - uses: Wandalen/wretry.action@v1.0.36
               name: Checkout
               with:
                   action: actions/checkout@v3
@@ -172,7 +172,7 @@ jobs:
               timeout-minutes: 10
               run: scripts/build/gn_bootstrap.sh
             - name: Uploading bootstrap logs
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ always() && !env.ACT }}
               with:
                   name: bootstrap-logs
@@ -229,19 +229,35 @@ jobs:
               run: |
                   ./scripts/run_in_build_env.sh \
                     "./scripts/build/build_examples.py --no-log-timestamps \
-                       --target linux-x64-all-clusters-ipv6only-clang \
-                       --target linux-x64-chip-tool-ipv6only-clang \
                        --target linux-x64-minmdns-ipv6only-clang \
                        --target linux-x64-rpc-console \
                        build \
                     "
+            - name: Create a pre-generate directory and ensure compile-time codegen would fail
+              run: |
+                  ./scripts/run_in_build_env.sh "./scripts/codepregen.py ./zzz_pregenerated"
+                  mv scripts/codegen.py scripts/codegen.py.renamed
+            - name: Build using build_examples.py (pregen)
+              timeout-minutes: 60
+              run: |
+                  ./scripts/run_in_build_env.sh \
+                    "./scripts/build/build_examples.py --no-log-timestamps \
+                       --target linux-x64-all-clusters-ipv6only-clang \
+                       --target linux-x64-chip-tool-ipv6only-clang \
+                       --pregen-dir ./zzz_pregenerated \
+                       build \
+                    "
+            - name: Undo code pre-generation changes (make compile time codegen work again)
+              run: |
+                  rm -rf ./zzz_pregenerated
+                  mv scripts/codegen.py.renamed scripts/codegen.py
             - name: Run fake linux tests with build_examples
               timeout-minutes: 15
               run: |
                   ./scripts/run_in_build_env.sh \
                     "./scripts/build/build_examples.py --no-log-timestamps --target linux-fake-tests build"
             - name: Uploading core files
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ failure() && !env.ACT }}
               with:
                   name: crash-core-linux
@@ -254,7 +270,7 @@ jobs:
             # If re-enabling, some subset of this should be picked
             #
             # - name: Uploading objdir for debugging
-            #   uses: actions/upload-artifact@v2
+            #   uses: actions/upload-artifact@v3
             #   if: ${{ failure() && !env.ACT }}
             #   with:
             #       name: crash-objdir-linux
@@ -287,7 +303,7 @@ jobs:
         if: github.actor != 'restyled-io[bot]'
 
         container:
-            image: connectedhomeip/chip-build:0.6.05
+            image: connectedhomeip/chip-build:0.6.06
             volumes:
                 - "/tmp/log_output:/tmp/test_logs"
             options: --sysctl "net.ipv6.conf.all.disable_ipv6=0
@@ -302,7 +318,7 @@ jobs:
               env:
                   CONCURRENCY_CONTEXT: ${{ github.ref }}-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.number) || (github.event_name == 'workflow_dispatch' && github.run_number) || github.sha }}
               run: echo "$CONCURRENCY_CONTEXT"
-            - uses: Wandalen/wretry.action@v1.0.15
+            - uses: Wandalen/wretry.action@v1.0.36
               name: Checkout
               with:
                   action: actions/checkout@v3
@@ -336,7 +352,7 @@ jobs:
         if: github.actor != 'restyled-io[bot]'
 
         steps:
-            - uses: Wandalen/wretry.action@v1.0.15
+            - uses: Wandalen/wretry.action@v1.0.36
               name: Checkout
               with:
                   action: actions/checkout@v3
@@ -368,7 +384,7 @@ jobs:
               timeout-minutes: 25
               run: scripts/build/gn_bootstrap.sh
             - name: Uploading bootstrap logs
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ always() && !env.ACT }}
               with:
                   name: bootstrap-logs
@@ -419,7 +435,7 @@ jobs:
                        check \
                     "
             - name: Uploading diagnostic logs
-              uses: actions/upload-artifact@v2
+              uses: actions/upload-artifact@v3
               if: ${{ failure() && !env.ACT }}
               with:
                   name: crash-log-darwin

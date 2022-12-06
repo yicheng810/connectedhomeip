@@ -20,68 +20,76 @@ package com.matter.controller;
 
 import chip.devicecontroller.ChipDeviceController;
 import chip.devicecontroller.ControllerParams;
-import com.matter.controller.commands.common.Command;
-import com.matter.controller.commands.common.CredentialsIssuer;
-import java.util.Arrays;
+import com.matter.controller.commands.common.*;
+import com.matter.controller.commands.discover.*;
+import com.matter.controller.commands.pairing.*;
+import java.util.ArrayList;
 
 public class Main {
-  private static void ShowUsage(Command[] commands) {
-    StringBuffer arguments = new StringBuffer();
-    StringBuffer attributes = new StringBuffer();
+  private static void registerCommandsDiscover(
+      ChipDeviceController controller,
+      CommandManager commandManager,
+      CredentialsIssuer credentialsIssuer) {
+    ArrayList<Command> clusterCommands = new ArrayList<Command>();
+    DiscoverCommand discoverCommand = new DiscoverCommand(controller, credentialsIssuer);
+    DiscoverCommissionablesCommand discoverCommissionablesCommand =
+        new DiscoverCommissionablesCommand(controller, credentialsIssuer);
+    DiscoverCommissionersCommand discoverCommissionersCommand =
+        new DiscoverCommissionersCommand(controller, credentialsIssuer);
+    clusterCommands.add(discoverCommand);
+    clusterCommands.add(discoverCommissionablesCommand);
+    clusterCommands.add(discoverCommissionersCommand);
 
-    for (Command command : commands) {
-      arguments.append("    ");
-      arguments.append(command.getName());
-
-      int argumentsCount = command.getArgumentsCount();
-      for (int j = 0; j < argumentsCount; j++) {
-        arguments.append(" ");
-        arguments.append(command.getArgumentName(j));
-      }
-
-      arguments.append("\n");
-
-      if ("read".equals(command.getName()) && command.getAttribute().isPresent()) {
-        attributes.append("    " + command.getAttribute().get() + "\n");
-      }
-    }
-
-    System.out.println(
-        String.format(
-            "Usage: \n"
-                + "  java_matter_controller command [params]\n\n"
-                + "  Supported commands and their parameters:\n%s\n"
-                + "  Supported attribute names for the 'read' command:\n%s",
-            arguments, attributes));
+    commandManager.register("discover", clusterCommands);
   }
 
-  private static void runCommand(CredentialsIssuer credIssuerCmds, String[] args) {
+  private static void registerCommandsPairing(
+      ChipDeviceController controller,
+      CommandManager commandManager,
+      CredentialsIssuer credentialsIssuer) {
+    ArrayList<Command> clusterCommands = new ArrayList<Command>();
+    UnpairCommand unpairCommand = new UnpairCommand(controller, credentialsIssuer);
+    PairCodeCommand pairCodeCommand = new PairCodeCommand(controller, credentialsIssuer);
+    PairCodePaseCommand pairCodePaseCommand =
+        new PairCodePaseCommand(controller, credentialsIssuer);
+    PairCodeWifiCommand pairCodeWifiCommand =
+        new PairCodeWifiCommand(controller, credentialsIssuer);
+    PairCodeThreadCommand pairCodeThreadCommand =
+        new PairCodeThreadCommand(controller, credentialsIssuer);
+    PairEthernetCommand pairEthernetCommand =
+        new PairEthernetCommand(controller, credentialsIssuer);
+    PairOnNetworkCommand pairOnNetworkCommand =
+        new PairOnNetworkCommand(controller, credentialsIssuer);
+    PairOnNetworkShortCommand pairOnNetworkShortCommand =
+        new PairOnNetworkShortCommand(controller, credentialsIssuer);
+    PairOnNetworkLongCommand pairOnNetworkLongCommand =
+        new PairOnNetworkLongCommand(controller, credentialsIssuer);
+    PairOnNetworkVendorCommand pairOnNetworkVendorCommand =
+        new PairOnNetworkVendorCommand(controller, credentialsIssuer);
+    PairOnNetworkCommissioningModeCommand pairOnNetworkCommissioningModeCommand =
+        new PairOnNetworkCommissioningModeCommand(controller, credentialsIssuer);
+    PairOnNetworkCommissionerCommand pairOnNetworkCommissionerCommand =
+        new PairOnNetworkCommissionerCommand(controller, credentialsIssuer);
+    PairOnNetworkDeviceTypeCommand pairOnNetworkDeviceTypeCommand =
+        new PairOnNetworkDeviceTypeCommand(controller, credentialsIssuer);
+    PairOnNetworkInstanceNameCommand pairOnNetworkInstanceNameCommand =
+        new PairOnNetworkInstanceNameCommand(controller, credentialsIssuer);
+    clusterCommands.add(unpairCommand);
+    clusterCommands.add(pairCodeCommand);
+    clusterCommands.add(pairCodePaseCommand);
+    clusterCommands.add(pairCodeWifiCommand);
+    clusterCommands.add(pairCodeThreadCommand);
+    clusterCommands.add(pairEthernetCommand);
+    clusterCommands.add(pairOnNetworkCommand);
+    clusterCommands.add(pairOnNetworkShortCommand);
+    clusterCommands.add(pairOnNetworkLongCommand);
+    clusterCommands.add(pairOnNetworkVendorCommand);
+    clusterCommands.add(pairOnNetworkCommissioningModeCommand);
+    clusterCommands.add(pairOnNetworkCommissionerCommand);
+    clusterCommands.add(pairOnNetworkDeviceTypeCommand);
+    clusterCommands.add(pairOnNetworkInstanceNameCommand);
 
-    // TODO::Start list of available commands, this hard coded list need to be replaced by command
-    // registration mechanism.
-    Command[] commands = {new On(credIssuerCmds), new Off(credIssuerCmds)};
-    // End list of available commands
-
-    if (args.length == 0) {
-      ShowUsage(commands);
-      return;
-    }
-
-    for (Command cmd : commands) {
-      if (cmd.getName().equals(args[0])) {
-        String[] temp = Arrays.copyOfRange(args, 1, args.length);
-
-        try {
-          cmd.initArguments(args.length - 1, temp);
-          cmd.run();
-        } catch (IllegalArgumentException e) {
-          System.out.println("Arguments init failed with exception: " + e.getMessage());
-        } catch (Exception e) {
-          System.out.println("Run command failed with exception: " + e.getMessage());
-        }
-        break;
-      }
-    }
+    commandManager.register("pairing", clusterCommands);
   }
 
   public static void main(String[] args) {
@@ -93,7 +101,18 @@ public class Main {
                 .build());
 
     CredentialsIssuer credentialsIssuer = new CredentialsIssuer();
+    CommandManager commandManager = new CommandManager();
 
-    runCommand(credentialsIssuer, args);
+    registerCommandsDiscover(controller, commandManager, credentialsIssuer);
+    registerCommandsPairing(controller, commandManager, credentialsIssuer);
+
+    try {
+      commandManager.run(args);
+    } catch (IllegalArgumentException e) {
+      System.out.println("Arguments init failed with exception: " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("Run command failed with exception: " + e.getMessage());
+    }
+    controller.shutdownCommissioning();
   }
 }
