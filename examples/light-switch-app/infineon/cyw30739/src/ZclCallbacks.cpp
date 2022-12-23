@@ -17,41 +17,26 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
-#include <App.h>
 #include <app-common/zap-generated/attributes/Accessors.h>
-#include <app-common/zap-generated/ids/Attributes.h>
-#include <app-common/zap-generated/ids/Clusters.h>
-#include <app/ConcreteAttributePath.h>
-#include <lib/support/logging/CHIPLogging.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/DeviceInstanceInfoProvider.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
 using namespace chip;
 using namespace chip::app::Clusters;
 using namespace chip::DeviceLayer;
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
-void emberAfBasicClusterInitCallback(EndpointId endpoint)
+void emberAfBasicInformationClusterInitCallback(EndpointId endpoint)
 {
     uint16_t year;
     uint8_t month;
     uint8_t dayOfMonth;
     char cString[16] = "00000000";
 
-    /* set ManufacturingDate */
     if (GetDeviceInstanceInfoProvider()->GetManufacturingDate(year, month, dayOfMonth) == CHIP_NO_ERROR)
     {
         snprintf(cString, sizeof(cString), "%04u%02u%02u", year, month, dayOfMonth);
     }
-    Basic::Attributes::ManufacturingDate::Set(endpoint, CharSpan(cString));
+    BasicInformation::Attributes::ManufacturingDate::Set(endpoint, CharSpan(cString));
 }
 
 void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attributePath, uint8_t type, uint16_t size,
