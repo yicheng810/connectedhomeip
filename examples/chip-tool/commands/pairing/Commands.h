@@ -21,6 +21,7 @@
 #include "commands/common/Commands.h"
 #include "commands/pairing/CloseSessionCommand.h"
 #include "commands/pairing/CommissionedListCommand.h"
+#include "commands/pairing/GetCommissionerNodeIdCommand.h"
 #include "commands/pairing/OpenCommissioningWindowCommand.h"
 #include "commands/pairing/PairingCommand.h"
 
@@ -172,14 +173,6 @@ public:
     {}
 };
 
-class Ethernet : public PairingCommand
-{
-public:
-    Ethernet(CredentialIssuerCommands * credsIssuerConfig) :
-        PairingCommand("ethernet", PairingMode::Ethernet, PairingNetworkType::Ethernet, credsIssuerConfig)
-    {}
-};
-
 class StartUdcServerCommand : public CHIPCommand
 {
 public:
@@ -206,7 +199,6 @@ void registerCommandsPairing(Commands & commands, CredentialIssuerCommands * cre
         make_unique<PairBleWiFi>(credsIssuerConfig),
         make_unique<PairBleThread>(credsIssuerConfig),
         make_unique<PairSoftAP>(credsIssuerConfig),
-        make_unique<Ethernet>(credsIssuerConfig),
         make_unique<PairOnNetwork>(credsIssuerConfig),
         make_unique<PairOnNetworkShort>(credsIssuerConfig),
         make_unique<PairOnNetworkLong>(credsIssuerConfig),
@@ -220,6 +212,7 @@ void registerCommandsPairing(Commands & commands, CredentialIssuerCommands * cre
         make_unique<StartUdcServerCommand>(credsIssuerConfig),
         make_unique<OpenCommissioningWindowCommand>(credsIssuerConfig),
         make_unique<CloseSessionCommand>(credsIssuerConfig),
+        make_unique<GetCommissionerNodeIdCommand>(credsIssuerConfig),
     };
 
     commands.Register(clusterName, clusterCommands);
