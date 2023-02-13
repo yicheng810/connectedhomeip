@@ -47,6 +47,8 @@ static Engine AppCmdOnOffSubCommands;
 static Engine AppCmdGroupsSubCommands;
 static Engine AppCmdGroupsOnOffSubCommands;
 static Engine AppCmdDebugSubCommands;
+static Engine AppCmdIdentifySubCommands;
+static Engine AppCmdIdentifyReadSubCommands;
 
 /***********************************************************************************
  * Functions
@@ -160,6 +162,7 @@ static CHIP_ERROR AppCommandHandler(int argc, char ** argv)
     {
         return OnOffHelpHandler(argc, argv);
     }
+
     return AppCmdOnOffSubCommands.ExecCommand(argc, argv);
 }
 
@@ -258,6 +261,64 @@ CHIP_ERROR ToggleCommandHandler(int argc, char ** argv)
 }
 
 } // namespace Group
+
+namespace Identify {
+
+CHIP_ERROR IdentifyHelpHandler(int argc, char ** argv)
+{
+    AppCmdIdentifySubCommands.ForEachCommand(Shell::PrintCommandHelp, nullptr);
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR AppCommandHandler(int argc, char ** argv)
+{
+    if (argc == 0)
+    {
+        return IdentifyHelpHandler(argc, argv);
+    }
+
+    return AppCmdIdentifySubCommands.ExecCommand(argc, argv);
+}
+
+CHIP_ERROR ReadHelpHandler(int argc, char ** argv)
+{
+    AppCmdIdentifyReadSubCommands.ForEachCommand(Shell::PrintCommandHelp, nullptr);
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR Read(int argc, char ** argv)
+{
+    if (argc == 0)
+    {
+        return ReadHelpHandler(argc, argv);
+    }
+
+    return AppCmdIdentifyReadSubCommands.ExecCommand(argc, argv);
+}
+
+CHIP_ERROR ReadAttributeList(int argc, char ** argv)
+{
+    BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
+    data->attributeId                  = Clusters::Identify::Attributes::AttributeList::Id;
+    data->ClusterId                    = Clusters::Identify::Id;
+    data->isReadAttribute              = true;
+
+    DeviceLayer::PlatformMgr().ScheduleWork(BindingHandler::SwitchWorkerHandler, reinterpret_cast<intptr_t>(data));
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR ReadFeatureMap(int argc, char ** argv)
+{
+    BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
+    data->attributeId                  = Clusters::Identify::Attributes::FeatureMap::Id;
+    data->ClusterId                    = Clusters::Identify::Id;
+    data->isReadAttribute              = true;
+
+    DeviceLayer::PlatformMgr().ScheduleWork(BindingHandler::SwitchWorkerHandler, reinterpret_cast<intptr_t>(data));
+    return CHIP_NO_ERROR;
+}
+
+} // namespace Identify
 
 /* Debug use function */
 namespace Debug {
@@ -373,7 +434,8 @@ void RegisterAppShellCommands()
         { &Local::AppCommandHandler, "local", "Light-switch on/off local device." },
         { &Unicast::AppCommandHandler, "onoff", "Lightbulb on/off remote device by unicast." },
         { &Group::AppCommandHandler, "groups", "Lightbulb on/off remote device by group." },
-        { &Debug::AppCommandHandler, "debug", "Extend the debug command." }
+        { &Debug::AppCommandHandler, "debug", "Extend the debug command." },
+        { &Identify::AppCommandHandler, "identify", "identify read attribute" },
     };
 
     static const shell_command_t ifxAppCmdLocalSubCommands[] = { { &Local::OnOffHelpHandler, "help",
@@ -386,19 +448,19 @@ void RegisterAppShellCommands()
         { &Unicast::OnOffHelpHandler, "help", "Usage: switch onoff [on|off|toggle]" },
         { &Unicast::OnCommandHandler, "on", "Sends on command to bound Lightbulb" },
         { &Unicast::OffCommandHandler, "off", "Sends off command to bound Lightbulb" },
-        { &Unicast::ToggleCommandHandler, "toggle", "Sends toggle command to bound Lightbulb" }
+        { &Unicast::ToggleCommandHandler, "toggle", "Sends toggle command to bound Lightbulb" },
     };
 
     static const shell_command_t ifxAppCmdGroupsSubCommands[] = {
         { &Group::AppSwitchHelpHandler, "help", "Switch a group of bounded Lightbulbs" },
-        { &Group::OnOffCommandHandler, "onoff", "Usage: switch groups onoff [on|off|toggle]" }
+        { &Group::OnOffCommandHandler, "onoff", "Usage: switch groups onoff [on|off|toggle]" },
     };
 
     static const shell_command_t ifxAppCmdGroupsOnOffSubCommands[] = {
         { &Group::OnOffHelpHandler, "help", "Usage: switch groups onoff [on|off|toggle]" },
         { &Group::OnCommandHandler, "on", "Sends on command to bound Group" },
         { &Group::OffCommandHandler, "off", "Sends off command to bound Group" },
-        { &Group::ToggleCommandHandler, "toggle", "Sends toggle command to bound Group" }
+        { &Group::ToggleCommandHandler, "toggle", "Sends toggle command to bound Group" },
     };
 
     static const shell_command_t ifxAppCmdDebugSubCommands[] = {
@@ -412,8 +474,19 @@ void RegisterAppShellCommands()
           "Change the brightness and range is 0-254. Usage: switch debug brightness [brightness value]" },
     };
 
-    static const shell_command_t AppLightSwitchCommand = { &AppCmdCommandHandler, "switch",
-                                                           "Light switch commands. Usage: switch [local|onoff|groups|debug]" };
+    static const shell_command_t ifxAppCmdIdentifySubCommands[] = {
+        { &Identify::Read, "read", "Usage: switch identify read <attribute>" },
+    };
+
+    static const shell_command_t ifxAppCmdIdentifyReadSubCommands[] = {
+        { &Identify::ReadHelpHandler, "help", "Usage: switch identify read <attribute>" },
+        { &Identify::ReadAttributeList, "attlist", "attribute list attribute" },
+        { &Identify::ReadFeatureMap, "featureMap", "featureMap attribute" },
+    };
+
+    static const shell_command_t AppLightSwitchCommand = {
+        &AppCmdCommandHandler, "switch", "Light switch commands. Usage: switch [local|onoff|groups|debug][identify]"
+    };
 
     AppCmdSubCommands.RegisterCommands(ifxAppCmdSubCommands, ArraySize(ifxAppCmdSubCommands));
     AppCmdLocalSubCommands.RegisterCommands(ifxAppCmdLocalSubCommands, ArraySize(ifxAppCmdLocalSubCommands));
@@ -421,6 +494,8 @@ void RegisterAppShellCommands()
     AppCmdGroupsSubCommands.RegisterCommands(ifxAppCmdGroupsSubCommands, ArraySize(ifxAppCmdGroupsSubCommands));
     AppCmdGroupsOnOffSubCommands.RegisterCommands(ifxAppCmdGroupsOnOffSubCommands, ArraySize(ifxAppCmdGroupsOnOffSubCommands));
     AppCmdDebugSubCommands.RegisterCommands(ifxAppCmdDebugSubCommands, ArraySize(ifxAppCmdDebugSubCommands));
+    AppCmdIdentifySubCommands.RegisterCommands(ifxAppCmdIdentifySubCommands, ArraySize(ifxAppCmdIdentifySubCommands));
+    AppCmdIdentifyReadSubCommands.RegisterCommands(ifxAppCmdIdentifyReadSubCommands, ArraySize(ifxAppCmdIdentifyReadSubCommands));
 
     Engine::Root().RegisterCommands(&AppLightSwitchCommand, 1);
 }

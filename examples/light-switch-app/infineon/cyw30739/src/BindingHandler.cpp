@@ -21,6 +21,7 @@
 /***********************************************************************************
  * Includes
  ***********************************************************************************/
+#include "controller/ReadInteraction.h"
 #include <App.h>
 #include <AppShellCommands.h>
 #include <BindingHandler.h>
@@ -67,6 +68,32 @@ void BindingHandler::OnInvokeCommandFailure(BindingData & aBindingData, CHIP_ERR
     else
     {
         printf(">> Binding command was not applied! Reason: %" CHIP_ERROR_FORMAT, aError.Format());
+    }
+}
+
+void ProcessIdentifyUnicastBindingRead(BindingHandler::BindingData * data, const EmberBindingTableEntry & binding,
+                                       OperationalDeviceProxy * peer_device)
+{
+    auto onSuccess = [](const ConcreteDataAttributePath & attributePath, const auto & dataResponse) {
+        ChipLogProgress(NotSpecified, "Read Identify attribute succeeds");
+    };
+
+    auto onFailure = [](const ConcreteDataAttributePath * attributePath, CHIP_ERROR error) {
+        ChipLogError(NotSpecified, "Read Identify attribute failed: %" CHIP_ERROR_FORMAT, error.Format());
+    };
+
+    VerifyOrDie(peer_device != nullptr && peer_device->ConnectionReady());
+
+    switch (data->attributeId)
+    {
+    case Clusters::Identify::Attributes::AttributeList::Id:
+        Controller::ReadAttribute<Clusters::Identify::Attributes::AttributeList::TypeInfo>(
+            peer_device->GetExchangeManager(), peer_device->GetSecureSession().Value(), binding.remote, onSuccess, onFailure);
+        break;
+    case Clusters::Identify::Attributes::FeatureMap::Id:
+        Controller::ReadAttribute<Clusters::Identify::Attributes::FeatureMap::TypeInfo>(
+            peer_device->GetExchangeManager(), peer_device->GetSecureSession().Value(), binding.remote, onSuccess, onFailure);
+        break;
     }
 }
 
@@ -149,7 +176,7 @@ void BindingHandler::OnOffProcessCommand(CommandId aCommandId, const EmberBindin
 void BindingHandler::LevelControlProcessCommand(CommandId aCommandId, const EmberBindingTableEntry & aBinding,
                                                 OperationalDeviceProxy * aDevice, void * aContext)
 {
-    BindingData * data = reinterpret_cast<BindingData *>(aContext);
+    BindingHandler::BindingData * data = reinterpret_cast<BindingHandler::BindingData *>(aContext);
 
     auto onSuccess = [](const ConcreteCommandPath & commandPath, const StatusIB & status, const auto & dataResponse) {
         printf(">> Binding command applied successfully!\n");
@@ -202,7 +229,7 @@ void BindingHandler::LightSwitchChangedHandler(const EmberBindingTableEntry & bi
                                                void * context)
 {
     VerifyOrReturn(context != nullptr, printf(">> Invalid context for Light switch handler\n"););
-    BindingData * data = static_cast<BindingData *>(context);
+    BindingHandler::BindingData * data = static_cast<BindingHandler::BindingData *>(context);
 
     if (binding.type == EMBER_MULTICAST_BINDING && data->IsGroup)
     {
@@ -229,6 +256,9 @@ void BindingHandler::LightSwitchChangedHandler(const EmberBindingTableEntry & bi
         case Clusters::LevelControl::Id:
             LevelControlProcessCommand(data->CommandId, binding, deviceProxy, context);
             break;
+        case Clusters::Identify::Id:
+            ProcessIdentifyUnicastBindingRead(data, binding, deviceProxy);
+            break;
         default:
             ChipLogError(NotSpecified, "Invalid binding unicast command data");
             break;
@@ -241,7 +271,7 @@ void BindingHandler::LightSwitchContextReleaseHandler(void * context)
 {
     VerifyOrReturn(context != nullptr, printf(">> Invalid context for Light switch context release handler\n"););
 
-    Platform::Delete(static_cast<BindingData *>(context));
+    Platform::Delete(static_cast<BindingHandler::BindingData *>(context));
 }
 
 void BindingHandler::InitInternal(intptr_t aArg)
@@ -328,7 +358,7 @@ void BindingHandler::SwitchWorkerHandler(intptr_t context)
 {
     VerifyOrReturn(context != 0, printf(">> BindingHandler::Invalid switch work data\n"));
 
-    BindingData * data = reinterpret_cast<BindingData *>(context);
+    BindingHandler::BindingData * data = reinterpret_cast<BindingHandler::BindingData *>(context);
     printf(">> Notify Bounded Cluster | endpoint: %d cluster: %ld\n", data->EndpointId, data->ClusterId);
     chip::BindingManager::GetInstance().NotifyBoundClusterChanged(data->EndpointId, data->ClusterId, static_cast<void *>(data));
 

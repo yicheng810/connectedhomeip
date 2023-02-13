@@ -36,13 +36,14 @@ class BindingHandler
 public:
     struct BindingData
     {
-        chip::EndpointId EndpointId;
+        chip::AttributeId attributeId;
+        chip::EndpointId EndpointId = 1;
         chip::CommandId CommandId;
         chip::ClusterId ClusterId;
         uint8_t Value;
         bool IsGroup{ false };
+        bool isReadAttribute = false;
     };
-
     void Init();
     void PrintBindingTable();
     bool IsGroupBound();
