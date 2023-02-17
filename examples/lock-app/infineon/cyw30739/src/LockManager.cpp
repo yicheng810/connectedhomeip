@@ -384,8 +384,8 @@ bool LockManager::SetUser(chip::EndpointId endpointId, uint16_t userIndex, chip:
     for (size_t i = 0; i < totalCredentials; ++i)
     {
         mCredentials[userIndex][i]                 = credentials[i];
-        mCredentials[userIndex][i].CredentialType  = 1;
-        mCredentials[userIndex][i].CredentialIndex = i + 1;
+        mCredentials[userIndex][i].CredentialType  = credentials[i].CredentialType;
+        mCredentials[userIndex][i].CredentialIndex = credentials[i].CredentialIndex;
     }
 
     userInStorage.credentials = chip::Span<const CredentialStruct>(mCredentials[userIndex], totalCredentials);
@@ -427,7 +427,7 @@ bool LockManager::GetCredential(chip::EndpointId endpointId, uint16_t credential
         return true;
     }
 
-    const auto & credentialInStorage = mLockCredentials[credentialIndex];
+    const auto & credentialInStorage = mLockCredentials[to_underlying(credentialType)][credentialIndex];
 
     credential.status = credentialInStorage.status;
     ChipLogDetail(Zcl, "CredentialStatus: %d, CredentialIndex: %d ", (int) credential.status, credentialIndex);
@@ -467,15 +467,15 @@ bool LockManager::SetCredential(chip::EndpointId endpointId, uint16_t credential
                     "[credentialStatus=%u,credentialType=%u,credentialDataSize=%u,creator=%d,modifier=%d]",
                     to_underlying(credentialStatus), to_underlying(credentialType), credentialData.size(), creator, modifier);
 
-    auto & credentialInStorage = mLockCredentials[credentialIndex];
+    auto & credentialInStorage = mLockCredentials[to_underlying(credentialType)][credentialIndex];
 
     credentialInStorage.status         = credentialStatus;
     credentialInStorage.credentialType = credentialType;
     credentialInStorage.createdBy      = creator;
     credentialInStorage.lastModifiedBy = modifier;
 
-    memcpy(mCredentialData[credentialIndex], credentialData.data(), credentialData.size());
-    credentialInStorage.credentialData = chip::ByteSpan{ mCredentialData[credentialIndex], credentialData.size() };
+    memcpy(mCredentialData, credentialData.data(), credentialData.size());
+    credentialInStorage.credentialData = chip::ByteSpan{ credentialData.data(), credentialData.size() };
 
     // Save credential information in NVM flash
     CYW30739Config::WriteConfigValueBin(CYW30739Config::kConfigKey_Credential, reinterpret_cast<const uint8_t *>(&mLockCredentials),
@@ -685,13 +685,13 @@ bool LockManager::setLockState(chip::EndpointId endpointId, DlLockState lockStat
     // Check the PIN code
     for (uint8_t i = 0; i < kMaxCredentials; i++)
     {
-        if (mLockCredentials[i].credentialType != CredentialTypeEnum::kPin ||
-            mLockCredentials[i].status == DlCredentialStatus::kAvailable)
+        if (mLockCredentials[to_underlying(CredentialTypeEnum::kPin)][i].credentialType != CredentialTypeEnum::kPin ||
+            mLockCredentials[to_underlying(CredentialTypeEnum::kPin)][i].status == DlCredentialStatus::kAvailable)
         {
             continue;
         }
 
-        if (mLockCredentials[i].credentialData.data_equal(pin.Value()))
+        if (mLockCredentials[to_underlying(CredentialTypeEnum::kPin)][i].credentialData.data_equal(pin.Value()))
         {
             ChipLogDetail(Zcl,
                           "Lock App: specified PIN code was found in the database, setting lock state to \"%s\" [endpointId=%d]",

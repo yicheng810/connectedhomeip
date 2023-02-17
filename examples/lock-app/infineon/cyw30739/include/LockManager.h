@@ -47,12 +47,13 @@ struct HolidayScheduleInfo
 namespace CYW30739DoorLock {
 namespace ResourceRanges {
 // Used to size arrays
-static constexpr uint16_t kMaxUsers                  = 10;
-static constexpr uint8_t kMaxCredentialsPerUser      = 10;
-static constexpr uint8_t kMaxWeekdaySchedulesPerUser = 10;
-static constexpr uint8_t kMaxYeardaySchedulesPerUser = 10;
-static constexpr uint8_t kMaxHolidaySchedules        = 10;
-static constexpr uint8_t kMaxCredentialSize          = 8;
+static constexpr uint16_t kMaxUsers                             = 10;
+static constexpr uint8_t kMaxCredentialsPerUser                 = 10;
+static constexpr uint8_t kMaxWeekdaySchedulesPerUser            = 10;
+static constexpr uint8_t kMaxYeardaySchedulesPerUser            = 10;
+static constexpr uint8_t kMaxHolidaySchedules                   = 10;
+static constexpr size_t DOOR_LOCK_CREDENTIAL_INFO_MAX_TYPES     = 6;
+static constexpr size_t DOOR_LOCK_CREDENTIAL_INFO_MAX_DATA_SIZE = 20;
 
 // Indices received for user/credential/schedules are 1-indexed
 static constexpr uint8_t kStartIndexValue = 1;
@@ -207,12 +208,12 @@ private:
     static int ActuatorMovementTimerEventHandler(void * aEvent);
 
     EmberAfPluginDoorLockUserInfo mLockUsers[kMaxUsers];
-    EmberAfPluginDoorLockCredentialInfo mLockCredentials[kMaxCredentials];
+    EmberAfPluginDoorLockCredentialInfo mLockCredentials[DOOR_LOCK_CREDENTIAL_INFO_MAX_TYPES][kMaxCredentials];
     WeekDaysScheduleInfo mWeekdaySchedule[kMaxUsers][kMaxWeekdaySchedulesPerUser];
     YearDayScheduleInfo mYeardaySchedule[kMaxUsers][kMaxYeardaySchedulesPerUser];
     HolidayScheduleInfo mHolidaySchedule[kMaxHolidaySchedules];
     char mUserNames[ArraySize(mLockUsers)][DOOR_LOCK_MAX_USER_NAME_SIZE];
-    uint8_t mCredentialData[kMaxCredentials][kMaxCredentialSize];
+    uint8_t mCredentialData[DOOR_LOCK_CREDENTIAL_INFO_MAX_DATA_SIZE];
     CredentialStruct mCredentials[kMaxUsers][kMaxCredentialsPerUser];
 
     static LockManager sLock;
