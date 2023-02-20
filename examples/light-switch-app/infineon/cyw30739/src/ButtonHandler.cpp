@@ -30,6 +30,9 @@
 #include <wiced.h>
 #include <wiced_button_manager.h>
 #include <wiced_platform.h>
+#if CONFIG_DEVICE_LAYER
+#include <platform/CHIPDeviceLayer.h>
+#endif
 
 /***********************************************************************************
  * Function declare
@@ -99,6 +102,11 @@ void app_button_event_handler(const button_manager_button_t * button_mgr, button
                 LightMgr().Set(true, PLATFORM_LED_1);
                 LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::On);
             }
+        }
+        else if (event == BUTTON_HOLDING_EVENT)
+        {
+            printf("Button Performing factory reset ...\r\n");
+            chip::DeviceLayer::ConfigurationMgr().InitiateFactoryReset();
         }
     }
 }
