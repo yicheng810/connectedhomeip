@@ -135,9 +135,9 @@ Put the CYW30739 in to the recovery mode before running the flash script.
     ```bash
     chip-tool pairing ble-thread 1 hex:<operationalDataset> 20202021 3840
 
-    chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [<chip-tool-node-id>], "targets": null }{"fabricIndex": 1, "privilege": 3, "authMode": 2, "subjects": [<light-switch-node-id>], "targets": null }]' <lighting-node-id> 0
+    chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [<chip-tool-node-id>], "targets": null}, {"fabricIndex": 1, "privilege": 3, "authMode": 2, "subjects": [<light-switch-node-id>], "targets": [{"cluster": 6, "endpoint": 1, "deviceType": null}]}]' <lighting-node-id> 0
 
-    chip-tool binding write binding '[{"fabricIndex": 1, "node": <lighting-node-id>, "endpoint": 1, "cluster":6}]' <light-switch-node-id> 1
+    chip-tool binding write binding '[{"fabricIndex": 1, "node": <lighting-node-id>, "endpoint": 1, "cluster": 6}]' <light-switch-node-id> 1
     ```
 
     Example: After pairing successfully [lighting-node-id : 1,
@@ -147,7 +147,7 @@ Put the CYW30739 in to the recovery mode before running the flash script.
     chip-tool accesscontrol write acl '[{"fabricIndex": 1, "privilege": 5, "authMode": 2, "subjects": [112233], "targets": null}, {"fabricIndex": 1,
     "privilege": 3, "authMode": 2, "subjects": [2], "targets": [{"cluster": 6, "endpoint": 1, "deviceType": null}]}]' 1 0
 
-    chip-tool binding write binding '[{"fabricIndex": 1, "node": 1, "endpoint": 1, "cluster": 6}' 2 1
+    chip-tool binding write binding '[{"fabricIndex": 1, "node": 1, "endpoint": 1, "cluster": 6}]' 2 1
     ```
 
 -   Here is an example with the CHIPTool for groups commands only:

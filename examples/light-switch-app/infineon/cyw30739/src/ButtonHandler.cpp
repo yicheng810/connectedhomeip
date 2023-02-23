@@ -92,16 +92,7 @@ void app_button_event_handler(const button_manager_button_t * button_mgr, button
     {
         if (event == BUTTON_CLICK_EVENT && state == BUTTON_STATE_RELEASED)
         {
-            if (LightMgr().IsLightOn())
-            {
-                LightMgr().Set(false, PLATFORM_LED_1);
-                LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::Off);
-            }
-            else
-            {
-                LightMgr().Set(true, PLATFORM_LED_1);
-                LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::On);
-            }
+            LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::Toggle);
         }
         else if (event == BUTTON_HOLDING_EVENT)
         {
