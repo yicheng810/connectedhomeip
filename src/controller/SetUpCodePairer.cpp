@@ -485,9 +485,6 @@ void SetUpCodePairer::OnPairingComplete(CHIP_ERROR error)
         return;
     }
 
-    if (pairingDelegate != nullptr && pairingDelegate->IsDiscoverOnce())
-        return;
-
     // It may happen that there is a stale DNS entry. If so, ReconfirmRecord will flush
     // the record from the daemon cache once it determines that it is invalid.
     // It may not help for this particular resolve, but may help subsequent resolves.
