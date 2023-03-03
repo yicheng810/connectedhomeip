@@ -383,9 +383,7 @@ bool LockManager::SetUser(chip::EndpointId endpointId, uint16_t userIndex, chip:
 
     for (size_t i = 0; i < totalCredentials; ++i)
     {
-        mCredentials[userIndex][i]                 = credentials[i];
-        mCredentials[userIndex][i].CredentialType  = credentials[i].CredentialType;
-        mCredentials[userIndex][i].CredentialIndex = credentials[i].CredentialIndex;
+        mCredentials[userIndex][i] = credentials[i];
     }
 
     userInStorage.credentials = chip::Span<const CredentialStruct>(mCredentials[userIndex], totalCredentials);

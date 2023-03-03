@@ -75,6 +75,9 @@ CHIP_ERROR PairingCommand::RunInternal(NodeId remoteId)
     case PairingMode::SoftAP:
         err = Pair(remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort, mRemoteAddr.interfaceId));
         break;
+    case PairingMode::AlreadyDiscovered:
+        err = Pair(remoteId, PeerAddress::UDP(mRemoteAddr.address, mRemotePort, mRemoteAddr.interfaceId));
+        break;
     }
 
     return err;
@@ -106,8 +109,17 @@ CommissioningParameters PairingCommand::GetCommissioningParameters()
 
 CHIP_ERROR PairingCommand::PaseWithCode(NodeId remoteId)
 {
-    DiscoveryType discoveryType =
-        mUseOnlyOnNetworkDiscovery.ValueOr(false) ? DiscoveryType::kDiscoveryNetworkOnly : DiscoveryType::kAll;
+    auto discoveryType = DiscoveryType::kAll;
+    if (mUseOnlyOnNetworkDiscovery.ValueOr(false))
+    {
+        discoveryType = DiscoveryType::kDiscoveryNetworkOnly;
+    }
+
+    if (mDiscoverOnce.ValueOr(false))
+    {
+        discoveryType = DiscoveryType::kDiscoveryNetworkOnlyWithoutPASEAutoRetry;
+    }
+
     return CurrentCommissioner().EstablishPASEConnection(remoteId, mOnboardingPayload, discoveryType);
 }
 
@@ -123,7 +135,17 @@ CHIP_ERROR PairingCommand::PairWithCode(NodeId remoteId)
         auto wiFiCredentials   = commissioningParams.GetWiFiCredentials();
         mUseOnlyOnNetworkDiscovery.SetValue(!threadCredentials.HasValue() && !wiFiCredentials.HasValue());
     }
-    DiscoveryType discoveryType = mUseOnlyOnNetworkDiscovery.Value() ? DiscoveryType::kDiscoveryNetworkOnly : DiscoveryType::kAll;
+
+    auto discoveryType = DiscoveryType::kAll;
+    if (mUseOnlyOnNetworkDiscovery.ValueOr(false))
+    {
+        discoveryType = DiscoveryType::kDiscoveryNetworkOnly;
+    }
+
+    if (mDiscoverOnce.ValueOr(false))
+    {
+        discoveryType = DiscoveryType::kDiscoveryNetworkOnlyWithoutPASEAutoRetry;
+    }
 
     return CurrentCommissioner().PairDevice(remoteId, mOnboardingPayload, commissioningParams, discoveryType);
 }
@@ -191,17 +213,6 @@ void PairingCommand::OnStatusUpdate(DevicePairingDelegate::Status status)
     case DevicePairingDelegate::Status::SecurePairingFailed:
         ChipLogError(chipTool, "Secure Pairing Failed");
         SetCommandExitStatus(CHIP_ERROR_INCORRECT_STATE);
-        break;
-    case DevicePairingDelegate::Status::SecurePairingDiscoveringMoreDevices:
-        if (IsDiscoverOnce())
-        {
-            ChipLogError(chipTool, "Secure Pairing Failed");
-            SetCommandExitStatus(CHIP_ERROR_INCORRECT_STATE);
-        }
-        else
-        {
-            ChipLogProgress(chipTool, "Secure Pairing Discovering More Devices");
-        }
         break;
     }
 }

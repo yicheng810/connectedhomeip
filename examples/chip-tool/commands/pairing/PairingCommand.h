@@ -34,6 +34,7 @@ enum class PairingMode
     CodePaseOnly,
     Ble,
     SoftAP,
+    AlreadyDiscovered,
     OnNetwork,
 };
 
@@ -106,6 +107,13 @@ public:
             AddArgument("device-remote-port", 0, UINT16_MAX, &mRemotePort);
             AddArgument("pase-only", 0, 1, &mPaseOnly);
             break;
+        case PairingMode::AlreadyDiscovered:
+            AddArgument("skip-commissioning-complete", 0, 1, &mSkipCommissioningComplete);
+            AddArgument("setup-pin-code", 0, 134217727, &mSetupPINCode);
+            AddArgument("device-remote-ip", &mRemoteAddr);
+            AddArgument("device-remote-port", 0, UINT16_MAX, &mRemotePort);
+            AddArgument("pase-only", 0, 1, &mPaseOnly);
+            break;
         }
 
         switch (filterType)
@@ -150,7 +158,6 @@ public:
 
     /////////// DeviceDiscoveryDelegate Interface /////////
     void OnDiscoveredDevice(const chip::Dnssd::DiscoveredNodeData & nodeData) override;
-    bool IsDiscoverOnce() { return mDiscoverOnce.ValueOr(false); }
 
     /////////// DeviceAttestationDelegate /////////
     chip::Optional<uint16_t> FailSafeExpiryTimeoutSecs() const override;

@@ -343,9 +343,6 @@ void BindingHandler::PrintBindingTable()
             case EMBER_UNUSED_BINDING:
                 printf("[%d] UNUSED", i++);
                 break;
-            case EMBER_MANY_TO_ONE_BINDING:
-                printf("[%d] MANY TO ONE", i++);
-                break;
             default:
                 printf("\n>> --Unknow fail--\n");
                 break;
