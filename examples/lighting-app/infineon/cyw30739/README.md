@@ -31,8 +31,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip
-    $ git submodule update --init
-    $ ./scripts/examples/gn_build_example.sh examples/lighting-app/infineon/cyw30739 out/lighting-app
+    $ source scripts/activate.sh
+    $ scripts/build/build_examples.py --target cyw30739-cyw930739m2evb_01-light build
     ```
 
 -   To delete generated executable, libraries and object files use:
@@ -46,9 +46,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip/examples/lighting-app/infineon/cyw30739
-    $ git submodule update --init
     $ source third_party/connectedhomeip/scripts/activate.sh
-    $ gn gen out/debug
+    $ gn gen --args='cyw30739_board="CYW930739M2EVB-01"' out/debug
     $ ninja -C out/debug
     ```
 
@@ -71,6 +70,7 @@ the following arguments:
 
     ```bash
     $ ./scripts/examples/gn_build_example.sh examples/lighting-app/infineon/cyw30739 out/lighting-app \
+    'cyw30739_board="CYW930739M2EVB-01"' \
     'matter_dac="/path/to/dac.der"' \
     'matter_dac_key="/path/to/dac_key.der"' \
     'matter_pai="/path/to/pai.der"' \

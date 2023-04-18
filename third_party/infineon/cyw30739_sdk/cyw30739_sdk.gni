@@ -17,6 +17,7 @@ import("//build_overrides/chip.gni")
 import("//build_overrides/cyw30739_sdk.gni")
 
 import("${chip_root}/src/platform/device.gni")
+import("cyw30739_board.gni")
 
 declare_args() {
   # Enable sleepy end device
@@ -45,7 +46,7 @@ assert(cyw30739_sdk_root != "", "cyw30739_sdk_root must be specified")
 cyw30739_sdk_bsp_design_modus_dir =
     "${cyw30739_sdk_build_root}/bsp_design_modus"
 cyw30739_sdk_baselib_dir = "${cyw30739_sdk_root}/30739A0/COMPONENT_30739A0"
-cyw30739_sdk_board_dir = "${cyw30739_sdk_root}/CYW930739M2EVB-01"
+cyw30739_sdk_board_dir = "${cyw30739_sdk_root}/${cyw30739_board}"
 cyw30739_sdk_include_dir = "${cyw30739_sdk_root}/btsdk-include"
 cyw30739_sdk_patch_dir =
     "${cyw30739_sdk_baselib_dir}/internal/30739A0/patches_CYW930739M2EVB_01"

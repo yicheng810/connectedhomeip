@@ -427,6 +427,7 @@ def BuildCyw30739Target():
     # board
     target.AppendFixedTargets([
         TargetPart('cyw930739m2evb_01', board=Cyw30739Board.CYW930739M2EVB_01),
+        TargetPart('cyw930739m2evb_02', board=Cyw30739Board.CYW930739M2EVB_02),
     ])
 
     # apps

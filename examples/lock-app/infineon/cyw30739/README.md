@@ -16,8 +16,8 @@ An example showing the use of Matter on the Infineon CYW30739 platform.
 
 ## Introduction
 
-The CYW30739 lock example provides a baseline demonstration of a Light control
-device, built using Matter and the Infineon Modustoolbox SDK. It can be
+The CYW30739 lock example provides a baseline demonstration of a door lock
+control device, built using Matter and the Infineon Modustoolbox SDK. It can be
 controlled by a Matter controller over Thread network.
 
 The CYW30739 device can be commissioned over Bluetooth Low Energy where the
@@ -31,8 +31,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip
-    $ git submodule update --init
-    $ ./scripts/examples/gn_build_example.sh examples/lock-app/infineon/cyw30739 out/lock-app
+    $ source scripts/activate.sh
+    $ scripts/build/build_examples.py --target cyw30739-cyw930739m2evb_01-lock build
     ```
 
 -   To delete generated executable, libraries and object files use:
@@ -46,9 +46,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip/examples/lock-app/infineon/cyw30739
-    $ git submodule update --init
     $ source third_party/connectedhomeip/scripts/activate.sh
-    $ gn gen out/debug
+    $ gn gen --args='cyw30739_board="CYW930739M2EVB-01"' out/debug
     $ ninja -C out/debug
     ```
 
@@ -70,7 +69,8 @@ the following arguments:
 -   `matter_dac`, `matter_dac_key`, `matter_pai`, `matter_cd`
 
     ```bash
-    $ ./scripts/examples/gn_build_example.sh examples/lighting-app/infineon/cyw30739 out/lighting-app \
+    $ ./scripts/examples/gn_build_example.sh examples/lock-app/infineon/cyw30739 out/lock-app \
+    'cyw30739_board="CYW930739M2EVB-01"' \
     'matter_dac="/path/to/dac.der"' \
     'matter_dac_key="/path/to/dac_key.der"' \
     'matter_pai="/path/to/pai.der"' \

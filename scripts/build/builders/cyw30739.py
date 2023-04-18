@@ -54,10 +54,13 @@ class Cyw30739App(Enum):
 
 class Cyw30739Board(Enum):
     CYW930739M2EVB_01 = 1
+    CYW930739M2EVB_02 = 2
 
     def GnArgName(self):
         if self == Cyw30739Board.CYW930739M2EVB_01:
             return "CYW930739M2EVB-01"
+        elif self == Cyw30739Board.CYW930739M2EVB_02:
+            return "CYW930739M2EVB-02"
         else:
             raise Exception("Unknown board #: %r" % self)
 
@@ -78,7 +81,7 @@ class Cyw30739Builder(GnBuilder):
         self.release = release
 
     def GnBuildArgs(self):
-        args = []
+        args = ['cyw30739_board="{}"'.format(self.board.GnArgName())]
 
         if self.release:
             args.append('is_debug=false')

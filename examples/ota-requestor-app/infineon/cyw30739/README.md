@@ -32,8 +32,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip
-    $ git submodule update --init
-    $ ./scripts/examples/gn_build_example.sh examples/ota-requestor-app/infineon/cyw30739 out/ota-requestor-app
+    $ source scripts/activate.sh
+    $ scripts/build/build_examples.py --target cyw30739-cyw930739m2evb_01-ota-requestor build
     ```
 
 -   To delete generated executable, libraries and object files use:
@@ -47,9 +47,8 @@ dataset and CASE credentials are then provided.
 
     ```bash
     $ cd ~/connectedhomeip/examples/ota-requestor-app/infineon/cyw30739
-    $ git submodule update --init
     $ source third_party/connectedhomeip/scripts/activate.sh
-    $ gn gen out/debug
+    $ gn gen --args='cyw30739_board="CYW930739M2EVB-01"' out/debug
     $ ninja -C out/debug
     ```
 
@@ -71,7 +70,8 @@ the following arguments:
 -   `matter_dac`, `matter_dac_key`, `matter_pai`, `matter_cd`
 
     ```bash
-    $ ./scripts/examples/gn_build_example.sh examples/lighting-app/infineon/cyw30739 out/lighting-app \
+    $ scripts/examples/gn_build_example.sh examples/ota-requestor-app/infineon/cyw30739 out/ota-requestor-app \
+    'cyw30739_board="CYW930739M2EVB-01"' \
     'matter_dac="/path/to/dac.der"' \
     'matter_dac_key="/path/to/dac_key.der"' \
     'matter_pai="/path/to/pai.der"' \

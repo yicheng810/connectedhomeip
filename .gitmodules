@@ -200,9 +200,15 @@
 	path = third_party/infineon/cyw30739_sdk/repos/btsdk-include
 	url = https://github.com/Infineon/btsdk-include.git
 	platforms = cyw30739
-[submodule "cyw30739_sdk/target"]
+[submodule "cyw30739_sdk/CYW930739M2EVB-01"]
 	path = third_party/infineon/cyw30739_sdk/repos/CYW930739M2EVB-01
 	url = git@github.com:Infineon/MatterBSP.git
+	branch = CYW930739M2EVB-01
+	platforms = cyw30739
+[submodule "cyw30739_sdk/CYW930739M2EVB-02"]
+	path = third_party/infineon/cyw30739_sdk/repos/CYW930739M2EVB-02
+	url = git@github.com:Infineon/MatterBSP.git
+	branch = CYW930739M2EVB-02
 	platforms = cyw30739
 [submodule "cyw30739_sdk/tools"]
 	path = third_party/infineon/cyw30739_sdk/repos/btsdk-tools
