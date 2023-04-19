@@ -290,7 +290,7 @@ class Groups(Cluster):
     clusterRevision: 'uint' = None
 
     class Bitmaps:
-        class GroupClusterFeature(IntFlag):
+        class GroupsFeature(IntFlag):
             kGroupNames = 0x1
 
     class Commands:
@@ -615,11 +615,11 @@ class Scenes(Cluster):
     clusterRevision: 'uint' = None
 
     class Bitmaps:
-        class SceneFeatures(IntFlag):
-            kSceneNames = 0x1
-
         class ScenesCopyMode(IntFlag):
             kCopyAllScenes = 0x1
+
+        class ScenesFeature(IntFlag):
+            kSceneNames = 0x1
 
     class Structs:
         @dataclass
@@ -5355,9 +5355,9 @@ class TimeFormatLocalization(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="hourFormat", Tag=0x00000000, Type=TimeFormatLocalization.Enums.HourFormat),
-                ClusterObjectFieldDescriptor(Label="activeCalendarType", Tag=0x00000001, Type=typing.Optional[TimeFormatLocalization.Enums.CalendarType]),
-                ClusterObjectFieldDescriptor(Label="supportedCalendarTypes", Tag=0x00000002, Type=typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarType]]),
+                ClusterObjectFieldDescriptor(Label="hourFormat", Tag=0x00000000, Type=TimeFormatLocalization.Enums.HourFormatEnum),
+                ClusterObjectFieldDescriptor(Label="activeCalendarType", Tag=0x00000001, Type=typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum]),
+                ClusterObjectFieldDescriptor(Label="supportedCalendarTypes", Tag=0x00000002, Type=typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -5366,9 +5366,9 @@ class TimeFormatLocalization(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    hourFormat: 'TimeFormatLocalization.Enums.HourFormat' = None
-    activeCalendarType: 'typing.Optional[TimeFormatLocalization.Enums.CalendarType]' = None
-    supportedCalendarTypes: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarType]]' = None
+    hourFormat: 'TimeFormatLocalization.Enums.HourFormatEnum' = None
+    activeCalendarType: 'typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum]' = None
+    supportedCalendarTypes: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]]' = None
     generatedCommandList: 'typing.List[uint]' = None
     acceptedCommandList: 'typing.List[uint]' = None
     eventList: 'typing.List[uint]' = None
@@ -5377,7 +5377,7 @@ class TimeFormatLocalization(Cluster):
     clusterRevision: 'uint' = None
 
     class Enums:
-        class CalendarType(MatterIntEnum):
+        class CalendarTypeEnum(MatterIntEnum):
             kBuddhist = 0x00
             kChinese = 0x01
             kCoptic = 0x02
@@ -5396,7 +5396,7 @@ class TimeFormatLocalization(Cluster):
             # enum value. This specific should never be transmitted.
             kUnknownEnumValue = 12,
 
-        class HourFormat(MatterIntEnum):
+        class HourFormatEnum(MatterIntEnum):
             k12hr = 0x00
             k24hr = 0x01
             # All received enum values that are not listed above will be mapped
@@ -5418,9 +5418,9 @@ class TimeFormatLocalization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=TimeFormatLocalization.Enums.HourFormat)
+                return ClusterObjectFieldDescriptor(Type=TimeFormatLocalization.Enums.HourFormatEnum)
 
-            value: 'TimeFormatLocalization.Enums.HourFormat' = 0
+            value: 'TimeFormatLocalization.Enums.HourFormatEnum' = 0
 
         @dataclass
         class ActiveCalendarType(ClusterAttributeDescriptor):
@@ -5434,9 +5434,9 @@ class TimeFormatLocalization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[TimeFormatLocalization.Enums.CalendarType])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum])
 
-            value: 'typing.Optional[TimeFormatLocalization.Enums.CalendarType]' = None
+            value: 'typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum]' = None
 
         @dataclass
         class SupportedCalendarTypes(ClusterAttributeDescriptor):
@@ -5450,9 +5450,9 @@ class TimeFormatLocalization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarType]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]])
 
-            value: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarType]]' = None
+            value: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]]' = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -16325,13 +16325,6 @@ class WindowCovering(Cluster):
             kLiftEncoderControlled = 0x20
             kTiltEncoderControlled = 0x40
 
-        class Feature(IntFlag):
-            kLift = 0x1
-            kTilt = 0x2
-            kPositionAwareLift = 0x4
-            kAbsolutePosition = 0x8
-            kPositionAwareTilt = 0x10
-
         class Mode(IntFlag):
             kMotorDirectionReversed = 0x1
             kCalibrationMode = 0x2
@@ -16356,6 +16349,13 @@ class WindowCovering(Cluster):
             kHardwareFailure = 0x200
             kManualOperation = 0x400
             kProtection = 0x800
+
+        class WindowCoveringFeature(IntFlag):
+            kLift = 0x1
+            kTilt = 0x2
+            kPositionAwareLift = 0x4
+            kAbsolutePosition = 0x8
+            kPositionAwareTilt = 0x10
 
     class Commands:
         @dataclass
@@ -17337,7 +17337,7 @@ class PumpConfigurationAndControl(Cluster):
             kUnknownEnumValue = 4,
 
     class Bitmaps:
-        class PumpFeature(IntFlag):
+        class PumpConfigurationAndControlFeature(IntFlag):
             kConstantPressure = 0x1
             kCompensatedPressure = 0x2
             kConstantFlow = 0x4
@@ -22259,7 +22259,7 @@ class PressureMeasurement(Cluster):
     clusterRevision: 'uint' = None
 
     class Bitmaps:
-        class PressureFeature(IntFlag):
+        class PressureMeasurementFeature(IntFlag):
             kExtended = 0x1
 
     class Attributes:

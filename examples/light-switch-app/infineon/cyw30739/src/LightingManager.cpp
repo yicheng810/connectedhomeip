@@ -1,7 +1,6 @@
 /*
  *
  *    Copyright (c) 2021 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,20 +16,11 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
-#include <App.h>
 #include <LightingManager.h>
-#include <app-common/zap-generated/att-storage.h>
-#include <app-common/zap-generated/attributes/Accessors.h>
-#include <app/util/af.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
+#include <stdio.h>
+
 using namespace chip;
-using namespace chip::app;
 
 LightingManager LightingManager::sLight;
 bool usr_LED1_OnOffStatus = false;
@@ -46,9 +36,6 @@ static wiced_led_config_t chip_lighting_led_config_2 = {
     .bright = 50,
 };
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
 wiced_result_t LightingManager::Init()
 {
     wiced_result_t result;

@@ -20,13 +20,10 @@
 
 #include <ButtonHandler.h>
 #include <LockManager.h>
-#include <stdio.h>
+#include <platform/CHIPDeviceLayer.h>
 #include <wiced.h>
 #include <wiced_button_manager.h>
 #include <wiced_platform.h>
-#if CONFIG_DEVICE_LAYER
-#include <platform/CHIPDeviceLayer.h>
-#endif
 
 /******************************************************
  *                      Macros

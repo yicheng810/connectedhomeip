@@ -1,8 +1,6 @@
 /*
  *
  *    Copyright (c) 2022 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
- *    Copyright 2021, Cypress Semiconductor Corporation (an Infineon company)
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,31 +16,19 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
-#include <App.h>
 #include <ButtonHandler.h>
 #include <LightSwitch.h>
 #include <LightingManager.h>
 #include <app-common/zap-generated/attributes/Accessors.h>
 #include <platform/CHIPDeviceLayer.h>
-#include <wiced.h>
 #include <wiced_button_manager.h>
 #include <wiced_platform.h>
-#if CONFIG_DEVICE_LAYER
-#include <platform/CHIPDeviceLayer.h>
-#endif
 
-/***********************************************************************************
- * Function declare
- ***********************************************************************************/
+#define APP_MAX_BUTTON_DEF 1
+
 void app_button_event_handler(const button_manager_button_t * button_mgr, button_manager_event_t event,
                               button_manager_button_state_t state);
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
 using namespace chip::app::Clusters;
 
 static wiced_button_manager_configuration_t app_button_manager_configuration = {
@@ -56,15 +42,10 @@ static wiced_button_manager_configuration_t app_button_manager_configuration = {
     .event_handler           = app_button_event_handler,
 };
 
-/* Static button configuration */
 static wiced_button_configuration_t app_button_configurations[APP_MAX_BUTTON_DEF];
-/* Button objects for the button manager */
 static button_manager_button_t app_buttons[APP_MAX_BUTTON_DEF];
 static button_manager_t app_button_manager;
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
 wiced_result_t app_button_init(void)
 {
     wiced_result_t result = WICED_ERROR;
@@ -93,11 +74,6 @@ void app_button_event_handler(const button_manager_button_t * button_mgr, button
         if (event == BUTTON_CLICK_EVENT && state == BUTTON_STATE_RELEASED)
         {
             LightSwitch::GetInstance().InitiateActionSwitch(LightSwitch::Action::Toggle);
-        }
-        else if (event == BUTTON_HOLDING_EVENT)
-        {
-            printf("Button Performing factory reset ...\r\n");
-            chip::DeviceLayer::ConfigurationMgr().InitiateFactoryReset();
         }
     }
 }

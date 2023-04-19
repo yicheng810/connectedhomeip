@@ -1,7 +1,6 @@
 /*
  *
  *    Copyright (c) 2022 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,11 +15,9 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
+
 #pragma once
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app-common/zap-generated/ids/Commands.h>
 #include <app/CommandSender.h>
@@ -28,9 +25,6 @@
 #include <controller/InvokeInteraction.h>
 #include <platform/CHIPDeviceLayer.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
 class BindingHandler
 {
 public:
@@ -44,6 +38,7 @@ public:
         bool IsGroup{ false };
         bool isReadAttribute = false;
     };
+
     void Init();
     void PrintBindingTable();
     bool IsGroupBound();

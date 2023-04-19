@@ -1,7 +1,6 @@
 /*
  *
  *    Copyright (c) 2021 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,9 +16,6 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
 #include <App.h>
 #include <AppShellCommands.h>
 #include <BindingHandler.h>
@@ -29,9 +25,6 @@
 #include <lib/shell/commands/Help.h>
 #include <platform/CHIPDeviceLayer.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
 using namespace chip;
 using namespace chip::app;
 using namespace chip::Shell;
@@ -50,9 +43,6 @@ static Engine AppCmdDebugSubCommands;
 static Engine AppCmdIdentifySubCommands;
 static Engine AppCmdIdentifyReadSubCommands;
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
 static CHIP_ERROR AppCmdHelpHandler(int argc, char ** argv)
 {
     AppCmdSubCommands.ForEachCommand(Shell::PrintCommandHelp, nullptr);
@@ -69,7 +59,6 @@ static CHIP_ERROR AppCmdCommandHandler(int argc, char ** argv)
     return AppCmdSubCommands.ExecCommand(argc, argv);
 }
 
-/* Local device use function */
 namespace Local {
 
 static CHIP_ERROR OnOffHelpHandler(int argc, char ** argv)
@@ -121,7 +110,6 @@ CHIP_ERROR ToggleCommandHandler(int argc, char ** argv)
 
 } // namespace Local
 
-/* Assign the parameter and to do the ScheduleWork: unicast */
 CHIP_ERROR AssignUnicastData(LightSwitch::Status mStatus)
 {
     BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
@@ -139,7 +127,7 @@ CHIP_ERROR AssignUnicastData(LightSwitch::Status mStatus)
         break;
     default:
         data->CommandId = Clusters::OnOff::Commands::Off::Id;
-        printf(">> [unicast] default -> Clusters::OnOff::Commands::Off\n");
+        printf("[unicast] default -> Clusters::OnOff::Commands::Off\n");
         break;
     }
     data->ClusterId = Clusters::OnOff::Id;
@@ -147,7 +135,7 @@ CHIP_ERROR AssignUnicastData(LightSwitch::Status mStatus)
     DeviceLayer::PlatformMgr().ScheduleWork(BindingHandler::SwitchWorkerHandler, reinterpret_cast<intptr_t>(data));
     return CHIP_NO_ERROR;
 }
-/* Unicast use function */
+
 namespace Unicast {
 
 static CHIP_ERROR OnOffHelpHandler(int argc, char ** argv)
@@ -183,7 +171,6 @@ CHIP_ERROR ToggleCommandHandler(int argc, char ** argv)
 
 } // namespace Unicast
 
-/* Assign the parameter and to do the ScheduleWork: group */
 CHIP_ERROR AssignGroupData(LightSwitch::Status mStatus)
 {
     BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
@@ -201,7 +188,7 @@ CHIP_ERROR AssignGroupData(LightSwitch::Status mStatus)
         break;
     default:
         data->CommandId = Clusters::OnOff::Commands::Off::Id;
-        printf(">> [group] default -> Clusters::OnOff::Commands::Off\n");
+        printf("[group] default -> Clusters::OnOff::Commands::Off\n");
         break;
     }
     data->ClusterId = Clusters::OnOff::Id;
@@ -210,7 +197,7 @@ CHIP_ERROR AssignGroupData(LightSwitch::Status mStatus)
     DeviceLayer::PlatformMgr().ScheduleWork(BindingHandler::SwitchWorkerHandler, reinterpret_cast<intptr_t>(data));
     return CHIP_NO_ERROR;
 }
-/* Group use function */
+
 namespace Group {
 
 static CHIP_ERROR AppSwitchHelpHandler(int argc, char ** argv)
@@ -320,7 +307,6 @@ CHIP_ERROR ReadFeatureMap(int argc, char ** argv)
 
 } // namespace Identify
 
-/* Debug use function */
 namespace Debug {
 
 static CHIP_ERROR DebugHelpHandler(int argc, char ** argv)
@@ -345,12 +331,12 @@ CHIP_ERROR StartBLEAdvertisingDebugCommandHandler(int argc, char * argv[])
 
     if ((argc > 0) && (strcmp(argv[0], "start") == 0))
     {
-        printf(">> Start BLE advertising ...\n");
+        printf("Start BLE advertising ...\n");
         err = StartBLEAdvertisingHandler();
     }
     else if ((argc > 0) && (strcmp(argv[0], "stop") == 0))
     {
-        printf(">> Stop BLE advertising ...\n");
+        printf("Stop BLE advertising ...\n");
         err = StopBLEAdvertisingHandler();
     }
     else
@@ -369,10 +355,6 @@ static CHIP_ERROR TableDebugCommandHandler(int argc, char ** argv)
 
 /*
  * Usage: switch debug bind_group [fabric index] [group id] [cluster id]
- * >> switch debug bind_group 1 257 6
- *
- * lighting app use cluster id 6 is the On/Off cluster
- * lighting app use cluster id 8 is the Level Control cluster
  */
 CHIP_ERROR GroupBindCommandHandler(int argc, char ** argv)
 {
@@ -391,10 +373,6 @@ CHIP_ERROR GroupBindCommandHandler(int argc, char ** argv)
 
 /*
  * Usage: switch debug bind_unicast [fabric index] [node id] [endpoint] [cluster id]
- * >> switch debug bind_unicast 1 1 1 6
- *
- * lighting app use cluster id 6 is the On/Off cluster
- * lighting app use cluster id 8 is the Level Control cluster
  */
 CHIP_ERROR UnicastBindCommandHandler(int argc, char ** argv)
 {
@@ -414,9 +392,6 @@ CHIP_ERROR UnicastBindCommandHandler(int argc, char ** argv)
 
 /*
  * Usage: switch debug brightness [brightness value]
- * >> switch debug brightness 100
- *
- * lighting app use cluster id 8 that is the Level Control cluster before enter the change brightness value
  */
 CHIP_ERROR ChangeBrightnessCommandHandler(int argc, char ** argv)
 {
@@ -426,7 +401,6 @@ CHIP_ERROR ChangeBrightnessCommandHandler(int argc, char ** argv)
 
 } // namespace Debug
 
-/* Register all shell commands */
 void RegisterAppShellCommands()
 {
     static const shell_command_t ifxAppCmdSubCommands[] = {

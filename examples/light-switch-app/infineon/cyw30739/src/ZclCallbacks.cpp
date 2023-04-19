@@ -1,7 +1,6 @@
 /*
  *
  *    Copyright (c) 2021 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,9 +44,6 @@ void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attrib
     switch (attributePath.mClusterId)
     {
     case Identify::Id:
-        ChipLogProgress(Zcl, "Identify attribute ID: " ChipLogFormatMEI " Type: %u Value: %u, length %u",
-                        ChipLogValueMEI(attributePath.mAttributeId), type, *value, size);
-
         if (attributePath.mAttributeId == Identify::Attributes::IdentifyTime::Id)
         {
             uint16_t identifyTime;
@@ -57,10 +53,10 @@ void MatterPostAttributeChangeCallback(const app::ConcreteAttributePath & attrib
                 return;
             }
         }
-        return;
+        break;
     case OnOffSwitchConfiguration::Id:
-        ChipLogProgress(Zcl, "OnOff Switch Configuration attribute ID: " ChipLogFormatMEI " Type: %u Value: %u, length %u",
-                        ChipLogValueMEI(attributePath.mAttributeId), type, *value, size);
+        printf("OnOff Switch Configuration attribute ID: " ChipLogFormatMEI " Type: %u Value: %u, length %u\n",
+               ChipLogValueMEI(attributePath.mAttributeId), type, *value, size);
         return;
     default:
         printf("Unhandled cluster ID: 0x%04lx\n", attributePath.mClusterId);

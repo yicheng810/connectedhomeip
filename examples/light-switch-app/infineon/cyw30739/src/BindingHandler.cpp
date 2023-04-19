@@ -1,8 +1,6 @@
 /*
  *
  *    Copyright (c) 2022 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
- *    Copyright 2021, Cypress Semiconductor Corporation (an Infineon company)
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,25 +16,14 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
 #include "controller/ReadInteraction.h"
-#include <App.h>
 #include <AppShellCommands.h>
 #include <BindingHandler.h>
 #include <app/clusters/bindings/bindings.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
 using namespace chip;
 using namespace chip::app;
-using namespace chip::app::Clusters;
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
 void BindingHandler::Init()
 {
     DeviceLayer::PlatformMgr().ScheduleWork(InitInternal);
@@ -48,7 +35,7 @@ void BindingHandler::OnInvokeCommandFailure(BindingData & aBindingData, CHIP_ERR
 
     if (aError == CHIP_ERROR_TIMEOUT && !BindingHandler::GetInstance().mCaseSessionRecovered)
     {
-        printf(">> Response timeout for invoked command, trying to recover CASE session.\n");
+        printf("Response timeout for invoked command, trying to recover CASE session.\n");
 
         // Set flag to not try recover session multiple times.
         BindingHandler::GetInstance().mCaseSessionRecovered = true;
@@ -61,13 +48,13 @@ void BindingHandler::OnInvokeCommandFailure(BindingData & aBindingData, CHIP_ERR
 
         if (CHIP_NO_ERROR != error)
         {
-            printf(">> NotifyBoundClusterChanged failed due to: %" CHIP_ERROR_FORMAT, error.Format());
+            printf("NotifyBoundClusterChanged failed due to: %" CHIP_ERROR_FORMAT, error.Format());
             return;
         }
     }
     else
     {
-        printf(">> Binding command was not applied! Reason: %" CHIP_ERROR_FORMAT, aError.Format());
+        printf("Binding command was not applied! Reason: %" CHIP_ERROR_FORMAT, aError.Format());
     }
 }
 
@@ -104,12 +91,10 @@ void BindingHandler::OnOffProcessCommand(CommandId aCommandId, const EmberBindin
     BindingData * data = reinterpret_cast<BindingData *>(aContext);
 
     auto onSuccess = [](const ConcreteCommandPath & commandPath, const StatusIB & status, const auto & dataResponse) {
-        printf(">> Binding command applied successfully!\n");
+        printf("Binding command applied successfully!\n");
         // If session was recovered and communication works, reset flag to the initial state.
         if (BindingHandler::GetInstance().mCaseSessionRecovered)
-        {
             BindingHandler::GetInstance().mCaseSessionRecovered = false;
-        }
     };
 
     auto onFailure = [dataRef = *data](CHIP_ERROR aError) mutable { BindingHandler::OnInvokeCommandFailure(dataRef, aError); };
@@ -164,27 +149,25 @@ void BindingHandler::OnOffProcessCommand(CommandId aCommandId, const EmberBindin
         }
         break;
     default:
-        printf(">> Invalid binding command data - commandId is not supported\n");
+        printf("Invalid binding command data - commandId is not supported\n");
         break;
     }
     if (CHIP_NO_ERROR != ret)
     {
-        printf(">> Invoke OnOff Command Request ERROR: %s\n", ErrorStr(ret));
+        printf("Invoke OnOff Command Request ERROR: %s\n", ErrorStr(ret));
     }
 }
 
 void BindingHandler::LevelControlProcessCommand(CommandId aCommandId, const EmberBindingTableEntry & aBinding,
                                                 OperationalDeviceProxy * aDevice, void * aContext)
 {
-    BindingHandler::BindingData * data = reinterpret_cast<BindingHandler::BindingData *>(aContext);
+    BindingData * data = reinterpret_cast<BindingData *>(aContext);
 
     auto onSuccess = [](const ConcreteCommandPath & commandPath, const StatusIB & status, const auto & dataResponse) {
-        printf(">> Binding command applied successfully!\n");
+        printf("Binding command applied successfully!\n");
         // If session was recovered and communication works, reset flag to the initial state.
         if (BindingHandler::GetInstance().mCaseSessionRecovered)
-        {
             BindingHandler::GetInstance().mCaseSessionRecovered = false;
-        }
     };
 
     auto onFailure = [dataRef = *data](CHIP_ERROR aError) mutable { BindingHandler::OnInvokeCommandFailure(dataRef, aError); };
@@ -193,7 +176,7 @@ void BindingHandler::LevelControlProcessCommand(CommandId aCommandId, const Embe
 
     if (aDevice)
     {
-        // To validate connection is ready once here instead of multiple times in each case statement below.
+        // We are validating connection is ready once here instead of multiple times in each case statement below.
         VerifyOrDie(aDevice->ConnectionReady());
     }
 
@@ -215,21 +198,20 @@ void BindingHandler::LevelControlProcessCommand(CommandId aCommandId, const Embe
     }
     break;
     default:
-        printf(">> Invalid binding command data - commandId is not supported\n");
+        printf("Invalid binding command data - commandId is not supported\n");
         break;
     }
     if (CHIP_NO_ERROR != ret)
     {
-        printf(">> Invoke Group Command Request ERROR: %s\n", ErrorStr(ret));
+        printf("Invoke Group Command Request ERROR: %s\n", ErrorStr(ret));
     }
 }
 
-/* add to .RegisterBoundDeviceChangedHandler */
 void BindingHandler::LightSwitchChangedHandler(const EmberBindingTableEntry & binding, OperationalDeviceProxy * deviceProxy,
                                                void * context)
 {
-    VerifyOrReturn(context != nullptr, printf(">> Invalid context for Light switch handler\n"););
-    BindingHandler::BindingData * data = static_cast<BindingHandler::BindingData *>(context);
+    VerifyOrReturn(context != nullptr, printf("Invalid context for Light switch handler\n"););
+    BindingData * data = static_cast<BindingData *>(context);
 
     if (binding.type == EMBER_MULTICAST_BINDING && data->IsGroup)
     {
@@ -266,24 +248,23 @@ void BindingHandler::LightSwitchChangedHandler(const EmberBindingTableEntry & bi
     }
 }
 
-/* add to .RegisterBoundDeviceContextReleaseHandler */
 void BindingHandler::LightSwitchContextReleaseHandler(void * context)
 {
-    VerifyOrReturn(context != nullptr, printf(">> Invalid context for Light switch context release handler\n"););
+    VerifyOrReturn(context != nullptr, printf("Invalid context for Light switch context release handler\n"););
 
-    Platform::Delete(static_cast<BindingHandler::BindingData *>(context));
+    Platform::Delete(static_cast<BindingData *>(context));
 }
 
 void BindingHandler::InitInternal(intptr_t aArg)
 {
     CHIP_ERROR ret = CHIP_NO_ERROR;
-    auto & server  = chip::Server::GetInstance();
+    auto & server  = Server::GetInstance();
 
     ret = BindingManager::GetInstance().Init(
         { &server.GetFabricTable(), server.GetCASESessionManager(), &server.GetPersistentStorage() });
     if (CHIP_NO_ERROR != ret)
     {
-        printf(">> BindingHandler::InitInternal() run fail, err_code: 0x%" CHIP_ERROR_FORMAT, ret.Format());
+        printf("BindingHandler::InitInternal() run fail, err_code: 0x%" CHIP_ERROR_FORMAT, ret.Format());
         printf("\n");
     }
     else
@@ -294,7 +275,6 @@ void BindingHandler::InitInternal(intptr_t aArg)
     }
 }
 
-/* Check the binding data is exist in table */
 bool BindingHandler::IsGroupBound()
 {
     BindingTable & bindingTable = BindingTable::GetInstance();
@@ -313,58 +293,53 @@ void BindingHandler::PrintBindingTable()
 {
     BindingTable & bindingTable = BindingTable::GetInstance();
 
-    if (bindingTable.Size() > 0)
+    printf("Binding Table size: [%d]:\n", bindingTable.Size());
+    uint8_t i = 0;
+    for (auto & entry : bindingTable)
     {
-        printf(">> Binding table size[%d]:\n", bindingTable.Size());
-        /* get table date */
-        uint8_t i = 0;
-        for (auto & entry : bindingTable)
+        switch (entry.type)
         {
-            switch (entry.type)
-            {
-            case EMBER_UNICAST_BINDING:
-                printf("[%d] UNICAST:", i++);
-                printf("\t\t+ Fabric: %d\n \
-                \t+ LocalEndpoint %d \n \
-                \t+ ClusterId %d \n \
-                \t+ RemoteEndpointId %d \n \
-                \t+ NodeId %d \n",
-                       (int) entry.fabricIndex, (int) entry.local, (int) entry.clusterId.Value(), (int) entry.remote,
-                       (int) entry.nodeId);
-                break;
-            case EMBER_MULTICAST_BINDING:
-                printf("[%d] GROUP:", i++);
-                printf("\t\t+ Fabric: %d\n \
-                \t+ LocalEndpoint %d \n \
-                \t+ RemoteEndpointId %d \n \
-                \t+ GroupId %d \n",
-                       (int) entry.fabricIndex, (int) entry.local, (int) entry.remote, (int) entry.groupId);
-                break;
-            case EMBER_UNUSED_BINDING:
-                printf("[%d] UNUSED", i++);
-                break;
-            default:
-                printf("\n>> --Unknow fail--\n");
-                break;
-            }
+        case EMBER_UNICAST_BINDING:
+            printf("[%d] UNICAST:", i++);
+            printf("\t\t+ Fabric: %d\n \
+            \t+ LocalEndpoint %d \n \
+            \t+ ClusterId %d \n \
+            \t+ RemoteEndpointId %d \n \
+            \t+ NodeId %d \n",
+                   (int) entry.fabricIndex, (int) entry.local, (int) entry.clusterId.Value(), (int) entry.remote,
+                   (int) entry.nodeId);
+            break;
+        case EMBER_MULTICAST_BINDING:
+            printf("[%d] GROUP:", i++);
+            printf("\t\t+ Fabric: %d\n \
+            \t+ LocalEndpoint %d \n \
+            \t+ RemoteEndpointId %d \n \
+            \t+ GroupId %d \n",
+                   (int) entry.fabricIndex, (int) entry.local, (int) entry.remote, (int) entry.groupId);
+            break;
+        case EMBER_UNUSED_BINDING:
+            printf("[%d] UNUSED", i++);
+            break;
+        default:
+            break;
         }
     }
 }
 
 void BindingHandler::SwitchWorkerHandler(intptr_t context)
 {
-    VerifyOrReturn(context != 0, printf(">> BindingHandler::Invalid switch work data\n"));
+    VerifyOrReturn(context != 0, printf("BindingHandler::Invalid switch work data\n"));
 
     BindingHandler::BindingData * data = reinterpret_cast<BindingHandler::BindingData *>(context);
-    printf(">> Notify Bounded Cluster | endpoint: %d cluster: %ld\n", data->EndpointId, data->ClusterId);
-    chip::BindingManager::GetInstance().NotifyBoundClusterChanged(data->EndpointId, data->ClusterId, static_cast<void *>(data));
+    printf("Notify Bounded Cluster | endpoint: %d cluster: %ld\n", data->EndpointId, data->ClusterId);
+    BindingManager::GetInstance().NotifyBoundClusterChanged(data->EndpointId, data->ClusterId, static_cast<void *>(data));
 
     Platform::Delete(data);
 }
 
 void BindingHandler::BindingWorkerHandler(intptr_t context)
 {
-    VerifyOrReturn(context != 0, ChipLogError(NotSpecified, ">> BindingHandler::Invalid binding work data\n"));
+    VerifyOrReturn(context != 0, ChipLogError(NotSpecified, "BindingHandler::Invalid binding work data\n"));
     EmberBindingTableEntry * entry = reinterpret_cast<EmberBindingTableEntry *>(context);
     AddBindingEntry(*entry);
 

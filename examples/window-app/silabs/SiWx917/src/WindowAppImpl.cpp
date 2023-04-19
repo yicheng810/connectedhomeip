@@ -27,7 +27,7 @@
 #ifdef QR_CODE_ENABLED
 #include <qrcodegen.h>
 #else
-#include "SiWx917DeviceDataProvider.h"
+#include "SilabsDeviceDataProvider.h"
 #include <setup_payload/QRCodeSetupPayloadGenerator.h>
 #include <setup_payload/SetupPayload.h>
 #endif // QR_CODE_ENABLED
@@ -69,11 +69,11 @@ chip::app::Clusters::NetworkCommissioning::Instance
 WindowAppImpl::Timer::Timer(const char * name, uint32_t timeoutInMs, Callback callback, void * context) :
     WindowApp::Timer(name, timeoutInMs, callback, context)
 {
-    mHandler = xTimerCreate(name,          // Just a text name, not used by the RTOS kernel
-                            timeoutInMs,   // == default timer period (mS)
-                            false,         // no timer reload (==one-shot)
-                            (void *) this, // init timer id = app task obj context
-                            TimerCallback  // timer callback handler
+    mHandler = xTimerCreate(name,                       // Just a text name, not used by the RTOS kernel
+                            pdMS_TO_TICKS(timeoutInMs), // == default timer period
+                            false,                      // no timer reload (==one-shot)
+                            (void *) this,              // init timer id = app task obj context
+                            TimerCallback               // timer callback handler
     );
     if (mHandler == NULL)
     {
@@ -90,7 +90,7 @@ void WindowAppImpl::Timer::Start()
     }
 
     // Timer is not active
-    if (xTimerStart(mHandler, 100) != pdPASS)
+    if (xTimerStart(mHandler, pdMS_TO_TICKS(100)) != pdPASS)
     {
         SILABS_LOG("Timer start() failed");
         appError(CHIP_ERROR_INTERNAL);
@@ -115,7 +115,7 @@ void WindowAppImpl::Timer::IsrStart()
 void WindowAppImpl::Timer::Stop()
 {
     mIsActive = false;
-    if (xTimerStop(mHandler, 0) == pdFAIL)
+    if (xTimerStop(mHandler, pdMS_TO_TICKS(0)) == pdFAIL)
     {
         SILABS_LOG("Timer stop() failed");
         appError(CHIP_ERROR_INTERNAL);
@@ -217,7 +217,7 @@ CHIP_ERROR WindowAppImpl::Init()
     char qrCodeBuffer[chip::QRCodeBasicSetupPayloadGenerator::kMaxQRCodeBase38RepresentationLength + 1];
     chip::MutableCharSpan QRCode(qrCodeBuffer);
 
-    if (SIWx917::SIWx917DeviceDataProvider::GetDeviceDataProvider().GetSetupPayload(QRCode) == CHIP_NO_ERROR)
+    if (Silabs::SilabsDeviceDataProvider::GetDeviceDataProvider().GetSetupPayload(QRCode) == CHIP_NO_ERROR)
     {
         PrintQrCodeURL(QRCode);
     }
@@ -226,6 +226,8 @@ CHIP_ERROR WindowAppImpl::Init()
         SILABS_LOG("Getting QR code failed!");
     }
 #endif // QR_CODE_ENABLED
+
+    mWindowAppInit = true;
 
     return CHIP_NO_ERROR;
 }
@@ -531,14 +533,30 @@ WindowAppImpl::Button::Button(WindowApp::Button::Id id, const char * name) : Win
 void WindowAppImpl::OnButtonChange(uint8_t Btn, uint8_t btnAction)
 {
     WindowApp::Button * btn = static_cast<Button *>((Btn == SIWx917_BTN0) ? sInstance.mButtonUp : sInstance.mButtonDown);
-    btn->Press();
-    // since sl_button_on_change is being called only with button press, calling Release() without condition
-    btn->Release();
+    if (Btn == SIWx917_BTN1)
+    {
+        btn->Press();
+        btn->Release();
+    }
+    else
+    {
+        if (btnAction)
+        {
+            btn->Press();
+        }
+        else
+        {
+            btn->Release();
+        }
+    }
 }
 
 // Silabs button callback from button event ISR
 void sl_button_on_change(uint8_t btn, uint8_t btnAction)
 {
     WindowAppImpl * app = static_cast<WindowAppImpl *>(&WindowAppImpl::sInstance);
-    app->OnButtonChange(btn, btnAction);
+    if (app->mWindowAppInit)
+    {
+        app->OnButtonChange(btn, btnAction);
+    }
 }

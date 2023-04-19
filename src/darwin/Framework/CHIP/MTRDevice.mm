@@ -48,27 +48,7 @@ typedef void (^MTRDeviceAttributeReportHandler)(NSArray * _Nonnull);
 
 // Consider moving utility classes to their own file
 #pragma mark - Utility Classes
-@interface MTRPair<FirstObjectType, SecondObjectType> : NSObject
-+ (instancetype)pairWithFirst:(FirstObjectType)first second:(SecondObjectType)second;
-@property (nonatomic, readonly) FirstObjectType first;
-@property (nonatomic, readonly) SecondObjectType second;
-@end
-
-@implementation MTRPair
-- (instancetype)initWithFirst:(id)first second:(id)second
-{
-    if (self = [super init]) {
-        _first = first;
-        _second = second;
-    }
-    return self;
-}
-+ (instancetype)pairWithFirst:(id)first second:(id)second
-{
-    return [[self alloc] initWithFirst:first second:second];
-}
-@end
-
+// This class is for storing weak references in a container
 @interface MTRWeakReference<ObjectType> : NSObject
 + (instancetype)weakReferenceWithObject:(ObjectType)object;
 - (instancetype)initWithObject:(ObjectType)object;
@@ -171,6 +151,12 @@ private:
 } // anonymous namespace
 
 #pragma mark - MTRDevice
+typedef NS_ENUM(NSUInteger, MTRDeviceExpectedValueFieldIndex) {
+    MTRDeviceExpectedValueFieldExpirationTimeIndex = 0,
+    MTRDeviceExpectedValueFieldValueIndex = 1,
+    MTRDeviceExpectedValueFieldIDIndex = 2
+};
+
 @interface MTRDevice ()
 @property (nonatomic, readonly) os_unfair_lock lock; // protects the caches and device state
 @property (nonatomic) chip::FabricIndex fabricIndex;
@@ -178,22 +164,46 @@ private:
 @property (nonatomic) dispatch_queue_t delegateQueue;
 @property (nonatomic) NSArray<NSDictionary<NSString *, id> *> * unreportedEvents;
 
+/**
+ * If subscriptionActive is true that means that either we are in the middle of
+ * trying to get a CASE session for the publisher or we have a live ReadClient
+ * right now (possibly with a lost subscription and trying to re-subscribe).
+ */
 @property (nonatomic) BOOL subscriptionActive;
 
 #define MTRDEVICE_SUBSCRIPTION_ATTEMPT_MIN_WAIT_SECONDS (1)
 #define MTRDEVICE_SUBSCRIPTION_ATTEMPT_MAX_WAIT_SECONDS (3600)
 @property (nonatomic) uint32_t lastSubscriptionAttemptWait;
+
+/**
+ * If reattemptingSubscription is true, that means that we have failed to get a
+ * CASE session for the publisher and are now waiting to try again.  In this
+ * state we never have subscriptionActive true or a non-null currentReadClient.
+ */
 @property (nonatomic) BOOL reattemptingSubscription;
 
 // Read cache is attributePath => NSDictionary of value.
 // See MTRDeviceResponseHandler definition for value dictionary details.
 @property (nonatomic) NSMutableDictionary<MTRAttributePath *, NSDictionary *> * readCache;
 
-// Expected value cache is attributePath => MTRPair of [NSDate of expiration time, NSDictionary of value]
+// Expected value cache is attributePath => NSArray of [NSDate of expiration time, NSDictionary of value, expected value ID]
+//   - See MTRDeviceExpectedValueFieldIndex for the definitions of indices into this array.
 // See MTRDeviceResponseHandler definition for value dictionary details.
-@property (nonatomic) NSMutableDictionary<MTRAttributePath *, MTRPair<NSDate *, NSDictionary *> *> * expectedValueCache;
+@property (nonatomic) NSMutableDictionary<MTRAttributePath *, NSArray *> * expectedValueCache;
+
+// This is a monotonically increasing value used when adding entries to expectedValueCache
+// Currently used/updated only in _getAttributesToReportWithNewExpectedValues:expirationTime:expectedValueID:
+@property (nonatomic) uint64_t expectedValueNextID;
 
 @property (nonatomic) BOOL expirationCheckScheduled;
+
+/**
+ * If currentReadClient is non-null, that means that we successfully
+ * called SendAutoResubscribeRequest on the ReadClient and have not yet gotten
+ * an OnDone for that ReadClient.
+ */
+@property (nonatomic) ReadClient * currentReadClient;
+
 @end
 
 @implementation MTRDevice
@@ -254,9 +264,39 @@ private:
     os_unfair_lock_unlock(&self->_lock);
 }
 
+- (void)nodeMayBeAdvertisingOperational
+{
+    MTR_LOG_DEFAULT("%@ saw new operational advertisement", self);
+
+    // We might want to trigger a resubscribe on our existing ReadClient.  Do
+    // that outside the scope of our lock, so we're not calling arbitrary code
+    // we don't control with the lock held.  This is safe, because when
+    // nodeMayBeAdvertisingOperational is called we are running on the Matter
+    // queue, and the ReadClient can't get destroyed while we are on that queue.
+    ReadClient * readClientToResubscribe = nullptr;
+
+    os_unfair_lock_lock(&self->_lock);
+
+    // Don't change state to MTRDeviceStateReachable, since the device might not
+    // in fact be reachable yet; we won't know until we have managed to
+    // establish a CASE session.  And at that point, our subscription will
+    // trigger the state change as needed.
+    if (self.reattemptingSubscription) {
+        [self _reattemptSubscriptionNowIfNeeded];
+    } else {
+        readClientToResubscribe = self->_currentReadClient;
+    }
+    os_unfair_lock_unlock(&self->_lock);
+
+    if (readClientToResubscribe) {
+        readClientToResubscribe->TriggerResubscribeIfScheduled("operational advertisement seen");
+    }
+}
+
 // assume lock is held
 - (void)_changeState:(MTRDeviceState)state
 {
+    os_unfair_lock_assert_owner(&self->_lock);
     MTRDeviceState lastState = _state;
     _state = state;
     if (lastState != state) {
@@ -337,13 +377,23 @@ private:
     MTR_LOG_INFO("%@ scheduling to reattempt subscription in %u seconds", self, _lastSubscriptionAttemptWait);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_lastSubscriptionAttemptWait * NSEC_PER_SEC)), self.queue, ^{
         os_unfair_lock_lock(&self->_lock);
-        MTR_LOG_INFO("%@ reattempting subscription", self);
-        self.reattemptingSubscription = NO;
-        [self _setupSubscription];
+        [self _reattemptSubscriptionNowIfNeeded];
         os_unfair_lock_unlock(&self->_lock);
     });
 
     os_unfair_lock_unlock(&self->_lock);
+}
+
+- (void)_reattemptSubscriptionNowIfNeeded
+{
+    os_unfair_lock_assert_owner(&self->_lock);
+    if (!self.reattemptingSubscription) {
+        return;
+    }
+
+    MTR_LOG_INFO("%@ reattempting subscription", self);
+    self.reattemptingSubscription = NO;
+    [self _setupSubscription];
 }
 
 - (void)_handleUnsolicitedMessageFromPublisher
@@ -361,7 +411,10 @@ private:
 
     // in case this is called during exponential back off of subscription
     // reestablishment, this starts the attempt right away
-    [self _setupSubscription];
+    // TODO: This doesn't really make sense.  If we _don't_ have a live
+    // ReadClient how did we get this notification and if we _do_ have an active
+    // ReadClient, this call or _setupSubscription would be no-ops.
+    [self _reattemptSubscriptionNowIfNeeded];
 
     os_unfair_lock_unlock(&self->_lock);
 }
@@ -537,6 +590,12 @@ private:
                                       },
                                       ^(void) {
                                           MTR_LOG_INFO("%@ got subscription done", self);
+                                          // Drop our pointer to the ReadClient immediately, since
+                                          // it's about to be destroyed and we don't want to be
+                                          // holding a dangling pointer.
+                                          os_unfair_lock_lock(&self->_lock);
+                                          self->_currentReadClient = nullptr;
+                                          os_unfair_lock_unlock(&self->_lock);
                                           dispatch_async(self.queue, ^{
                                               // OnDone
                                               [self _handleSubscriptionReset];
@@ -576,7 +635,10 @@ private:
                                   }
 
                                   // Callback and ClusterStateCache and ReadClient will be deleted
-                                  // when OnDone is called or an error is encountered.
+                                  // when OnDone is called.
+                                  os_unfair_lock_lock(&self->_lock);
+                                  self->_currentReadClient = readClient.get();
+                                  os_unfair_lock_unlock(&self->_lock);
                                   callback->AdoptReadClient(std::move(readClient));
                                   callback->AdoptClusterStateCache(std::move(clusterStateCache));
                                   callback.release();
@@ -645,6 +707,16 @@ private:
         timeout = MTRClampedNumber(timeout, @(1), @(UINT16_MAX));
     }
     expectedValueInterval = MTRClampedNumber(expectedValueInterval, @(1), @(UINT32_MAX));
+    MTRAttributePath * attributePath = [MTRAttributePath attributePathWithEndpointID:endpointID
+                                                                           clusterID:clusterID
+                                                                         attributeID:attributeID];
+    // Commit change into expected value cache
+    NSDictionary * newExpectedValueDictionary = @{ MTRAttributePathKey : attributePath, MTRDataKey : value };
+    uint64_t expectedValueID;
+    [self setExpectedValues:@[ newExpectedValueDictionary ]
+        expectedValueInterval:expectedValueInterval
+              expectedValueID:&expectedValueID];
+
     MTRAsyncCallbackQueueWorkItem * workItem = [[MTRAsyncCallbackQueueWorkItem alloc] initWithQueue:self.queue];
     MTRAsyncCallbackReadyHandler readyHandler = ^(MTRDevice * device, NSUInteger retryCount) {
         MTR_LOG_INFO("%@ dequeueWorkItem %@", logPrefix, self->_asyncCallbackWorkQueue);
@@ -659,19 +731,14 @@ private:
                               completion:^(NSArray<NSDictionary<NSString *, id> *> * _Nullable values, NSError * _Nullable error) {
                                   MTR_LOG_INFO("%@ completion error %@ endWork", logPrefix, error);
                                   [workItem endWork];
+                                  if (error) {
+                                      [self removeExpectedValueForAttributePath:attributePath expectedValueID:expectedValueID];
+                                  }
                               }];
     };
     workItem.readyHandler = readyHandler;
     MTR_LOG_INFO("%@ enqueueWorkItem %@", logPrefix, _asyncCallbackWorkQueue);
     [_asyncCallbackWorkQueue enqueueWorkItem:workItem];
-
-    // Commit change into expected value cache
-    MTRAttributePath * attributePath = [MTRAttributePath attributePathWithEndpointID:endpointID
-                                                                           clusterID:clusterID
-                                                                         attributeID:attributeID];
-    NSDictionary * newExpectedValueDictionary = @{ MTRAttributePathKey : attributePath, MTRDataKey : value };
-
-    [self setExpectedValues:@[ newExpectedValueDictionary ] expectedValueInterval:expectedValueInterval];
 }
 
 - (void)invokeCommandWithEndpointID:(NSNumber *)endpointID
@@ -693,6 +760,16 @@ private:
     } else {
         expectedValueInterval = MTRClampedNumber(expectedValueInterval, @(1), @(UINT32_MAX));
     }
+
+    uint64_t expectedValueID = 0;
+    NSMutableArray<MTRAttributePath *> * attributePaths = nil;
+    if (expectedValues) {
+        [self setExpectedValues:expectedValues expectedValueInterval:expectedValueInterval expectedValueID:&expectedValueID];
+        attributePaths = [NSMutableArray array];
+        for (NSDictionary<NSString *, id> * expectedValue in expectedValues) {
+            [attributePaths addObject:expectedValue[MTRAttributePathKey]];
+        }
+    }
     MTRAsyncCallbackQueueWorkItem * workItem = [[MTRAsyncCallbackQueueWorkItem alloc] initWithQueue:self.queue];
     MTRAsyncCallbackReadyHandler readyHandler = ^(MTRDevice * device, NSUInteger retryCount) {
         MTR_LOG_INFO("%@ dequeueWorkItem %@", logPrefix, self->_asyncCallbackWorkQueue);
@@ -710,15 +787,14 @@ private:
                                      completion(values, error);
                                  });
                                  [workItem endWork];
+                                 if (error && expectedValues) {
+                                     [self removeExpectedValuesForAttributePaths:attributePaths expectedValueID:expectedValueID];
+                                 }
                              }];
     };
     workItem.readyHandler = readyHandler;
     MTR_LOG_INFO("%@ enqueueWorkItem %@", logPrefix, _asyncCallbackWorkQueue);
     [_asyncCallbackWorkQueue enqueueWorkItem:workItem];
-
-    if (expectedValues) {
-        [self setExpectedValues:expectedValues expectedValueInterval:expectedValueInterval];
-    }
 }
 
 - (void)openCommissioningWindowWithSetupPasscode:(NSNumber *)setupPasscode
@@ -735,6 +811,15 @@ private:
                                               completion:completion];
 }
 
+- (void)openCommissioningWindowWithDiscriminator:(NSNumber *)discriminator
+                                        duration:(NSNumber *)duration
+                                           queue:(dispatch_queue_t)queue
+                                      completion:(MTRDeviceOpenCommissioningWindowHandler)completion
+{
+    auto * baseDevice = [self newBaseDevice];
+    [baseDevice openCommissioningWindowWithDiscriminator:discriminator duration:duration queue:queue completion:completion];
+}
+
 #pragma mark - Cache management
 
 // assume lock is held
@@ -745,14 +830,15 @@ private:
     // find expired attributes, and calculate next timer fire date
     NSDate * now = [NSDate date];
     NSDate * nextExpirationDate = nil;
-    NSMutableSet<MTRPair<MTRAttributePath *, NSDictionary *> *> * attributeInfoToRemove = [NSMutableSet set];
+    // Set of NSArray with 2 elements [path, value] - this is used in this method only
+    NSMutableSet<NSArray *> * attributeInfoToRemove = [NSMutableSet set];
     for (MTRAttributePath * attributePath in _expectedValueCache) {
-        MTRPair<NSDate *, NSDictionary *> * expectedValue = _expectedValueCache[attributePath];
-        NSDate * attributeExpirationDate = expectedValue.first;
+        NSArray * expectedValue = _expectedValueCache[attributePath];
+        NSDate * attributeExpirationDate = expectedValue[MTRDeviceExpectedValueFieldExpirationTimeIndex];
         if (expectedValue) {
             if ([now compare:attributeExpirationDate] == NSOrderedDescending) {
                 // expired - save [path, values] pair to attributeToRemove
-                [attributeInfoToRemove addObject:[MTRPair pairWithFirst:attributePath second:expectedValue.second]];
+                [attributeInfoToRemove addObject:@[ attributePath, expectedValue[MTRDeviceExpectedValueFieldValueIndex] ]];
             } else {
                 // get the next expiration date
                 if (!nextExpirationDate || [nextExpirationDate compare:attributeExpirationDate] == NSOrderedDescending) {
@@ -765,10 +851,10 @@ private:
     // remove from expected value cache and report attributes as needed
     NSMutableArray * attributesToReport = [NSMutableArray array];
     NSMutableArray * attributePathsToReport = [NSMutableArray array];
-    for (MTRPair<MTRAttributePath *, NSDictionary *> * attributeInfo in attributeInfoToRemove) {
+    for (NSArray * attributeInfo in attributeInfoToRemove) {
         // compare with known value and mark for report if different
-        MTRAttributePath * attributePath = attributeInfo.first;
-        NSDictionary * attributeDataValue = attributeInfo.second;
+        MTRAttributePath * attributePath = attributeInfo[0];
+        NSDictionary * attributeDataValue = attributeInfo[1];
         NSDictionary * cachedAttributeDataValue = _readCache[attributePath];
         if (cachedAttributeDataValue
             && ![self _attributeDataValue:attributeDataValue isEqualToDataValue:cachedAttributeDataValue]) {
@@ -815,17 +901,17 @@ private:
     os_unfair_lock_lock(&self->_lock);
 
     // First check expected value cache
-    MTRPair<NSDate *, NSDictionary *> * expectedValue = _expectedValueCache[attributePath];
+    NSArray * expectedValue = _expectedValueCache[attributePath];
     if (expectedValue) {
         NSDate * now = [NSDate date];
-        if ([now compare:expectedValue.first] == NSOrderedDescending) {
+        if ([now compare:expectedValue[MTRDeviceExpectedValueFieldExpirationTimeIndex]] == NSOrderedDescending) {
             // expired - purge and fall through
             _expectedValueCache[attributePath] = nil;
         } else {
             os_unfair_lock_unlock(&self->_lock);
 
             // not yet expired - return result
-            return expectedValue.second;
+            return expectedValue[MTRDeviceExpectedValueFieldValueIndex];
         }
     }
 
@@ -882,9 +968,10 @@ private:
             _readCache[attributePath] = nil;
         } else {
             // if expected values exists, purge and update read cache
-            MTRPair<NSDate *, NSDictionary *> * expectedValue = _expectedValueCache[attributePath];
+            NSArray * expectedValue = _expectedValueCache[attributePath];
             if (expectedValue) {
-                if (![self _attributeDataValue:attributeDataValue isEqualToDataValue:expectedValue.second]) {
+                if (![self _attributeDataValue:attributeDataValue
+                            isEqualToDataValue:expectedValue[MTRDeviceExpectedValueFieldValueIndex]]) {
                     shouldReportAttribute = YES;
                 }
                 _expectedValueCache[attributePath] = nil;
@@ -915,11 +1002,63 @@ private:
     return attributesToReport;
 }
 
+// If value is non-nil, associate with expectedValueID
+// If value is nil, remove only if expectedValueID matches
+- (void)_setExpectedValue:(NSDictionary<NSString *, id> *)expectedAttributeValue
+             attributePath:(MTRAttributePath *)attributePath
+            expirationTime:(NSDate *)expirationTime
+         shouldReportValue:(BOOL *)shouldReportValue
+    attributeValueToReport:(NSDictionary<NSString *, id> **)attributeValueToReport
+           expectedValueID:(uint64_t)expectedValueID
+{
+    os_unfair_lock_assert_owner(&self->_lock);
+
+    *shouldReportValue = NO;
+
+    NSArray * previousExpectedValue = _expectedValueCache[attributePath];
+    if (previousExpectedValue) {
+        if (expectedAttributeValue
+            && ![self _attributeDataValue:expectedAttributeValue
+                       isEqualToDataValue:previousExpectedValue[MTRDeviceExpectedValueFieldValueIndex]]) {
+            // Case where new expected value overrides previous expected value - report new expected value
+            *shouldReportValue = YES;
+            *attributeValueToReport = expectedAttributeValue;
+        } else if (!expectedAttributeValue) {
+            // Remove previous expected value only if it's from the same setExpectedValues operation
+            NSNumber * previousExpectedValueID = previousExpectedValue[MTRDeviceExpectedValueFieldIDIndex];
+            if (previousExpectedValueID.unsignedLongLongValue == expectedValueID) {
+                if (![self _attributeDataValue:previousExpectedValue[MTRDeviceExpectedValueFieldValueIndex]
+                            isEqualToDataValue:_readCache[attributePath]]) {
+                    // Case of removing expected value that is different than read cache - report read cache value
+                    *shouldReportValue = YES;
+                    *attributeValueToReport = _readCache[attributePath];
+                    _expectedValueCache[attributePath] = nil;
+                }
+            }
+        }
+    } else {
+        if (expectedAttributeValue
+            && ![self _attributeDataValue:expectedAttributeValue isEqualToDataValue:_readCache[attributePath]]) {
+            // Case where new expected value is different than read cache - report new expected value
+            *shouldReportValue = YES;
+            *attributeValueToReport = expectedAttributeValue;
+        }
+
+        // No need to report if new and previous expected value are both nil
+    }
+
+    if (expectedAttributeValue) {
+        _expectedValueCache[attributePath] = @[ expirationTime, expectedAttributeValue, @(expectedValueID) ];
+    }
+}
+
 // assume lock is held
 - (NSArray *)_getAttributesToReportWithNewExpectedValues:(NSArray<NSDictionary<NSString *, id> *> *)expectedAttributeValues
                                           expirationTime:(NSDate *)expirationTime
+                                         expectedValueID:(uint64_t *)expectedValueID
 {
     os_unfair_lock_assert_owner(&self->_lock);
+    uint64_t expectedValueIDToReturn = _expectedValueNextID++;
 
     NSMutableArray * attributesToReport = [NSMutableArray array];
     NSMutableArray * attributePathsToReport = [NSMutableArray array];
@@ -927,27 +1066,22 @@ private:
         MTRAttributePath * attributePath = attributeReponseValue[MTRAttributePathKey];
         NSDictionary * attributeDataValue = attributeReponseValue[MTRDataKey];
 
-        // check if value is different than cache, and report if needed
-        BOOL shouldReportAttribute = NO;
+        BOOL shouldReportValue = NO;
+        NSDictionary<NSString *, id> * attributeValueToReport;
+        [self _setExpectedValue:attributeDataValue
+                     attributePath:attributePath
+                    expirationTime:expirationTime
+                 shouldReportValue:&shouldReportValue
+            attributeValueToReport:&attributeValueToReport
+                   expectedValueID:expectedValueIDToReturn];
 
-        // first check write cache and purge / update
-        MTRPair<NSDate *, NSDictionary *> * previousExpectedValue = _expectedValueCache[attributePath];
-        if (previousExpectedValue) {
-            if (![self _attributeDataValue:attributeDataValue isEqualToDataValue:previousExpectedValue.second]) {
-                shouldReportAttribute = YES;
-            }
-        } else {
-            // if new expected value then compare with read cache and report if needed
-            if (![self _attributeDataValue:attributeDataValue isEqualToDataValue:_readCache[attributePath]]) {
-                shouldReportAttribute = YES;
-            }
-        }
-        _expectedValueCache[attributePath] = [MTRPair pairWithFirst:expirationTime second:attributeDataValue];
-
-        if (shouldReportAttribute) {
-            [attributesToReport addObject:attributeReponseValue];
+        if (shouldReportValue) {
+            [attributesToReport addObject:@{ MTRAttributePathKey : attributePath, MTRDataKey : attributeValueToReport }];
             [attributePathsToReport addObject:attributePath];
         }
+    }
+    if (expectedValueID) {
+        *expectedValueID = expectedValueIDToReturn;
     }
 
     MTR_LOG_INFO("%@ report from new expected values %@", self, attributePathsToReport);
@@ -956,6 +1090,14 @@ private:
 }
 
 - (void)setExpectedValues:(NSArray<NSDictionary<NSString *, id> *> *)values expectedValueInterval:(NSNumber *)expectedValueInterval
+{
+    [self setExpectedValues:values expectedValueInterval:expectedValueInterval expectedValueID:nil];
+}
+
+// expectedValueID is an out-argument that returns an identifier to be used when removing expected values
+- (void)setExpectedValues:(NSArray<NSDictionary<NSString *, id> *> *)values
+    expectedValueInterval:(NSNumber *)expectedValueInterval
+          expectedValueID:(uint64_t *)expectedValueID
 {
     // since NSTimeInterval is in seconds, convert ms into seconds in double
     NSDate * expirationTime = [NSDate dateWithTimeIntervalSinceNow:expectedValueInterval.doubleValue / 1000];
@@ -966,11 +1108,54 @@ private:
     os_unfair_lock_lock(&self->_lock);
 
     // _getAttributesToReportWithNewExpectedValues will log attribute paths reported
-    NSArray * attributesToReport = [self _getAttributesToReportWithNewExpectedValues:values expirationTime:expirationTime];
+    NSArray * attributesToReport = [self _getAttributesToReportWithNewExpectedValues:values
+                                                                      expirationTime:expirationTime
+                                                                     expectedValueID:expectedValueID];
     [self _reportAttributes:attributesToReport];
 
     [self _checkExpiredExpectedValues];
     os_unfair_lock_unlock(&self->_lock);
+}
+
+- (void)removeExpectedValuesForAttributePaths:(NSArray<MTRAttributePath *> *)attributePaths
+                              expectedValueID:(uint64_t)expectedValueID
+{
+    os_unfair_lock_lock(&self->_lock);
+    for (MTRAttributePath * attributePath in attributePaths) {
+        [self _removeExpectedValueForAttributePath:attributePath expectedValueID:expectedValueID];
+    }
+    os_unfair_lock_unlock(&self->_lock);
+}
+
+- (void)removeExpectedValueForAttributePath:(MTRAttributePath *)attributePath expectedValueID:(uint64_t)expectedValueID
+{
+    os_unfair_lock_lock(&self->_lock);
+    [self _removeExpectedValueForAttributePath:attributePath expectedValueID:expectedValueID];
+    os_unfair_lock_unlock(&self->_lock);
+}
+
+- (void)_removeExpectedValueForAttributePath:(MTRAttributePath *)attributePath expectedValueID:(uint64_t)expectedValueID
+{
+    os_unfair_lock_assert_owner(&self->_lock);
+
+    BOOL shouldReportValue;
+    NSDictionary<NSString *, id> * attributeValueToReport;
+    [self _setExpectedValue:nil
+                 attributePath:attributePath
+                expirationTime:nil
+             shouldReportValue:&shouldReportValue
+        attributeValueToReport:&attributeValueToReport
+               expectedValueID:expectedValueID];
+
+    MTR_LOG_INFO("%@ remove expected value for path %@ should report %@", self, attributePath, shouldReportValue ? @"YES" : @"NO");
+
+    if (shouldReportValue) {
+        if (attributeValueToReport) {
+            [self _reportAttributes:@[ @{ MTRAttributePathKey : attributePath, MTRDataKey : attributeValueToReport } ]];
+        } else {
+            [self _reportAttributes:@[ @{ MTRAttributePathKey : attributePath } ]];
+        }
+    }
 }
 
 - (MTRBaseDevice *)newBaseDevice

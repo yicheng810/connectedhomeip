@@ -1,8 +1,6 @@
 /*
  *
  *    Copyright (c) 2022 Project CHIP Authors
- *    Copyright (c) 2019 Google LLC.
- *    Copyright 2021, Cypress Semiconductor Corporation (an Infineon company)
  *    All rights reserved.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,34 +16,24 @@
  *    limitations under the License.
  */
 
-/***********************************************************************************
- * Includes
- ***********************************************************************************/
-#include <App.h>
-#include <BindingHandler.h>
 #include <LightSwitch.h>
-#include <app-common/zap-generated/attributes/Accessors.h>
-#include <app/clusters/switch-server/switch-server.h>
+
+#include <BindingHandler.h>
 #include <app/util/binding-table.h>
 #include <controller/InvokeInteraction.h>
 
-/***********************************************************************************
- * Parameters
- ***********************************************************************************/
+#define CHIP_DEVICE_CONFIG_BRIGHTNESS_MAXIMUM 254
+
 using namespace chip;
 using namespace chip::app;
 using namespace chip::app::Clusters;
 
-/***********************************************************************************
- * Functions
- ***********************************************************************************/
 void LightSwitch::Init(chip::EndpointId aLightDimmerSwitchEndpoint)
 {
     BindingHandler::GetInstance().Init();
     mLightSwitchEndpoint = aLightDimmerSwitchEndpoint;
 }
 
-/* Use button click event to test */
 void LightSwitch::InitiateActionSwitch(Action mAction)
 {
     BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
@@ -77,17 +65,14 @@ void LightSwitch::InitiateActionSwitch(Action mAction)
     }
 }
 
-/* Return the InitiateActionSwitch setting result */
 LightSwitch::Status LightSwitch::GetSwitchStatus()
 {
     return mStatus;
 }
 
-/* Test the function by CLI command: switch debug brightness [brightness value]  */
 void LightSwitch::DimmerChangeBrightness(uint16_t kValue)
 {
     static uint16_t sBrightness;
-
     BindingHandler::BindingData * data = Platform::New<BindingHandler::BindingData>();
     if (data)
     {

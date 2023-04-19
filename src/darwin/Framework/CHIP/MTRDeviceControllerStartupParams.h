@@ -127,15 +127,27 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * ** nodeID is allowed to be nil to indicate that the existing operational node
  *    id should be used.  The existing operational keys will also be used,
- *    unless operationalKeypair is provided.
+ *    unless operationalKeypair is provided.  The existing caseAuthenticatedTags
+ *    will be used.
  *
  * ** If nodeID is not nil, a new operational certificate will be generated for
  *    the provided node id (even if that matches the existing node id), using
  *    either the operationalKeypair if that is provided or a new randomly
- *    generated operational key.
- *
+ *    generated operational key, and using the provided caseAuthenticatedTags.
  */
 @property (nonatomic, copy, nullable) NSNumber * nodeID API_AVAILABLE(ios(16.4), macos(13.3), watchos(9.4), tvos(16.4));
+
+/**
+ * CASE authenticated tags to use for this controller's operational certificate.
+ *
+ * Only allowed to be not nil if nodeID is not nil.  In particular, if
+ * operationalCertificate is not nil, must be nil.  The provided operational
+ * certificate will be used as-is.
+ *
+ * If not nil, must contain at most 3 numbers, which are expected to be 32-bit
+ * unsigned Case Authenticated Tag values.
+ */
+@property (nonatomic, copy, nullable) NSSet<NSNumber *> * caseAuthenticatedTags MTR_NEWLY_AVAILABLE;
 
 /**
  * Root certificate, in X.509 DER form, to use.
@@ -219,8 +231,8 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * If not nil, and if operationalCertificate is nil, a new operational
  * certificate will be generated for the given operationalKeypair.  The node id
- * will for that certificated will be determined as described in the
- * documentation for nodeID.
+ * for that certificate will be determined as described in the documentation for
+ * nodeID.
  */
 @property (nonatomic, strong, nullable) id<MTRKeypair> operationalKeypair;
 
@@ -244,23 +256,23 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface MTRDeviceControllerStartupParams (Deprecated)
 
-@property (nonatomic, assign, readonly) uint64_t fabricId API_DEPRECATED(
+@property (nonatomic, assign, readonly) uint64_t fabricId MTR_DEPRECATED(
     "Please use fabricID", ios(16.1, 16.4), macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
-@property (nonatomic, copy, nullable) NSNumber * vendorId API_DEPRECATED(
+@property (nonatomic, copy, nullable) NSNumber * vendorId MTR_DEPRECATED(
     "Please use vendorID", ios(16.1, 16.4), macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
 @property (nonatomic, copy, nullable)
-    NSNumber * nodeId API_DEPRECATED("Please use nodeID", ios(16.1, 16.4), macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
+    NSNumber * nodeId MTR_DEPRECATED("Please use nodeID", ios(16.1, 16.4), macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
 
 - (instancetype)initWithSigningKeypair:(id<MTRKeypair>)nocSigner
                               fabricId:(uint64_t)fabricId
-                                   ipk:(NSData *)ipk API_DEPRECATED("Please use initWithIPK:fabricID:nocSigner:", ios(16.1, 16.4),
+                                   ipk:(NSData *)ipk MTR_DEPRECATED("Please use initWithIPK:fabricID:nocSigner:", ios(16.1, 16.4),
                                            macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
 - (instancetype)initWithOperationalKeypair:(id<MTRKeypair>)operationalKeypair
                     operationalCertificate:(MTRCertificateDERBytes)operationalCertificate
                    intermediateCertificate:(MTRCertificateDERBytes _Nullable)intermediateCertificate
                            rootCertificate:(MTRCertificateDERBytes)rootCertificate
                                        ipk:(NSData *)ipk
-    API_DEPRECATED("Please use initWithIPK:operationalKeypair:operationalCertificate:intermediateCertificate:rootCertificate:",
+    MTR_DEPRECATED("Please use initWithIPK:operationalKeypair:operationalCertificate:intermediateCertificate:rootCertificate:",
         ios(16.1, 16.4), macos(13.0, 13.3), watchos(9.1, 9.4), tvos(16.1, 16.4));
 
 @end

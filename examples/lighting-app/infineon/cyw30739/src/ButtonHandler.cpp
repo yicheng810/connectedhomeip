@@ -26,9 +26,6 @@
 #include <wiced.h>
 #include <wiced_button_manager.h>
 #include <wiced_platform.h>
-#if CONFIG_DEVICE_LAYER
-#include <platform/CHIPDeviceLayer.h>
-#endif
 
 using namespace chip::app::Clusters;
 
