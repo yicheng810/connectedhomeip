@@ -44,7 +44,6 @@
 #include "wiced_memory.h"
 #include "wiced_misc_rtos_utils.h"
 #endif
-#include <wiced_hal_platform.h>
 #include <wiced_sleep.h>
 
 /******************************************************
@@ -689,7 +688,7 @@ void wiced_button_manager_pending_event_handle(void)
     {
         for (a = 0; a < button_manager->number_of_buttons; a++)
         {
-            if (wiced_hal_platform_gpio_int_st_get(button_manager->buttons[a].configuration->button) == 1)
+            if (platform_button_pending_event_get_and_clear(button_manager->buttons[a].configuration->button))
             {
                 button_manager->configuration->event_handler(&button_manager->buttons[a], BUTTON_CLICK_EVENT,
                                                              BUTTON_STATE_RELEASED);
