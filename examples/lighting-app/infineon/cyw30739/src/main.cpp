@@ -43,6 +43,8 @@
 #include <wiced_memory.h>
 #include <wiced_platform.h>
 
+#include <wiced_hal_sflash.h>
+
 using namespace ::chip::Credentials;
 using namespace ::chip::DeviceLayer;
 using namespace ::chip::Shell;
@@ -97,7 +99,6 @@ static Identify gIdentify = {
     EMBER_ZCL_IDENTIFY_IDENTIFY_TYPE_NONE,
     OnIdentifyTriggerEffect,
 };
-
 APPLICATION_START()
 {
     CHIP_ERROR err;
@@ -177,6 +178,10 @@ APPLICATION_START()
     {
         printf("ERROR Shell Init %d\n", ret);
     }
+
+
+
+
     RegisterAppShellCommands();
     Engine::Root().RunMainLoop();
 
@@ -211,6 +216,25 @@ void InitApp(intptr_t args)
 
 #if CHIP_DEVICE_CONFIG_ENABLE_OTA_REQUESTOR
     OTAConfig::Init();
+#endif
+
+#if 0
+    wiced_platform_serial_flash_init();
+    printf("flash size:%lu (Bytes)\n", wiced_platform_serial_flash_size_get());
+
+    uint8_t  data[4] = {0};
+    uint8_t  write_buffer[4] = {0xde, 0xad, 0x5d, 0xde};
+
+    printf("write flash\n");
+    wiced_platform_serial_flash_write(0, write_buffer, 32);
+
+    wiced_platform_serial_flash_read(0, data, 32);
+    printf("[read] data[0] = %x, data[1] = %x, data[2] = %x, data[3] = %x\n", data[0], data[1], data[2], data[3]);
+
+    printf("erase flash\n");
+    wiced_platform_serial_flash_erase(0, 0);
+    wiced_platform_serial_flash_read(0, data, 32);
+    printf("[read] data[0] = %x, data[1] = %x, data[2] = %x, data[3] = %x\n", data[0], data[1], data[2], data[3]);
 #endif
 }
 

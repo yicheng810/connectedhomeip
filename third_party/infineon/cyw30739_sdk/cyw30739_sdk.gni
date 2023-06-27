@@ -192,6 +192,8 @@ template("cyw30739_sdk") {
       "${cyw30739_sdk_board_dir}/wiced_platform.h",
       "${cyw30739_sdk_board_dir}/wiced_platform_memory.h",
       "${cyw30739_sdk_board_dir}/wiced_platform_os.h",
+      "${cyw30739_sdk_board_dir}/gd25wq64e.c",
+      "${cyw30739_sdk_board_dir}/gd25wq64e.h",
       "${cyw30739_sdk_bsp_design_modus_dir}/cycfg_notices.h",
       "${cyw30739_sdk_bsp_design_modus_dir}/cycfg_pins.c",
       "${cyw30739_sdk_bsp_design_modus_dir}/cycfg_pins.h",

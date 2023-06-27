@@ -40,6 +40,8 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
+#define OFFSETOF(type, member)  ( (uintptr_t)&( (type *)0 )->member )
+
 void wiced_firmware_upgrade_bootloader(void);
 bool wiced_firmware_upgrade_prepare(void);
 uint32_t wiced_firmware_upgrade_process_block(uint32_t offset, const uint8_t * data, uint32_t len);

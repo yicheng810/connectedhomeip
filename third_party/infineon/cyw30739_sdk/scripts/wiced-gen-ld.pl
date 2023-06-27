@@ -75,6 +75,7 @@ my $mem_lut = {
 	".text" => {
 		"sections" => [
 			"*(.app_init_code)",
+			"*(.ext_flash)",
 			"*(.emb_text)",
 			"*(.text)",
 			"*(.text_in_ram)",
@@ -493,7 +494,9 @@ sub output_ld
 		}
 		close $OVER;
 	}
-
+	
+	#output_section('.external_flash', $mem_lut, $OUT);
+	
 	output_section('.text.mbedtls', $mem_lut, $OUT);
 
 	# if objects are assigned to XIP, match their .text and .rodata

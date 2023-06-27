@@ -45,6 +45,7 @@
 #include <wiced_bt_ota_firmware_upgrade.h>
 #include <wiced_hal_eflash.h>
 #include <wiced_hal_wdog.h>
+#include <wiced_platform.h>
 
 #define EF_PAGE_SIZE (0x1000u)
 
@@ -223,12 +224,16 @@ typedef struct upgrade_xs
 extern const CONFIG_INFO_t g_config_Info;
 
 static uint32_t upgrade_location_write(uint32_t offset, const uint8_t * data, uint32_t len);
+static uint32_t upgrade_location_ext_write(uint32_t offset, const uint8_t * data, uint32_t len);
 static bool lzss_decompress(const void * src, size_t n, bool (*data_writer)(uint32_t, int))
     __attribute__((section(".text_in_ram")));
 static bool xs_data_writer(uint32_t data_offset, int c) __attribute__((section(".text_in_ram")));
 static uint32_t calc_crc32(const uint8_t * buf, uint32_t len) __attribute__((section(".text_in_ram")));
 static uint32_t ef_offset(uint32_t offset) __attribute__((section(".text_in_ram")));
 static uint32_t upgrade_ds_location(void);
+
+static uint32_t const ext_flash_upgrade_address = 0;
+static uint32_t const int_flash_tmp_address = FLASH_SIZE - (UINT16_MAX + 1);
 
 /******************************************************
  *               Function Definitions
@@ -237,6 +242,10 @@ __attribute__((section(".init_code"))) void wiced_firmware_upgrade_bootloader(vo
 {
     const ds_header_t * ds_header   = (const ds_header_t *) g_config_Info.active_ds_base;
     const upgrade_xs_t * upgrade_xs = (upgrade_xs_t *) XS_LOCATION_UPGRADE;
+
+
+    /* external flash driver init */
+    //wiced_platform_serial_flash_init();
 
     /* Check the DS header of the upgrade XS */
     if (memcmp(&upgrade_xs->ds_header, ds_header, sizeof(*ds_header)) != 0)
@@ -291,13 +300,20 @@ bool wiced_firmware_upgrade_prepare(void)
         return false;
     }
 
+    /* external flash driver init */
+    wiced_platform_serial_flash_init();
+
     const uint32_t upgrade_xs_length = FLASH_SIZE - ef_offset(XS_LOCATION_UPGRADE);
     printf("Erasing Upgrade XS: 0x%08x, len: 0x%08lx\n", XS_LOCATION_UPGRADE, upgrade_xs_length);
+    const uint32_t ext_flash_sector_length = 256*16; //GW25WQ64E_BYTES_PER_PAGE*GW25WQ64E_PAGES_PER_SECTOR;
+
+    wiced_platform_serial_flash_erase(ext_flash_upgrade_address, (upgrade_xs_length/ext_flash_sector_length));
     if (WICED_SUCCESS != wiced_hal_eflash_erase(ef_offset(XS_LOCATION_UPGRADE), upgrade_xs_length))
     {
         printf("ERROR erase\n");
         return false;
     }
+
 
     return true;
 }
@@ -338,6 +354,17 @@ uint32_t wiced_firmware_upgrade_process_block(uint32_t offset, const uint8_t * d
     }
 
     uint32_t byte_written = 0;
+    wiced_platform_serial_flash_init();
+
+    uint8_t  test_data[4] = {0};
+    uint8_t  write_buffer[4] = {0xde, 0xad, 0x5d, 0xde};
+
+    printf("write flash\n");
+    wiced_platform_serial_flash_write(0x100000, write_buffer, 32);
+
+    wiced_platform_serial_flash_read(0x100000, test_data, 32);
+    printf("~~~~~~~~(TEST)[read] data[0] = %x, data[1] = %x, data[2] = %x, data[3] = %x\n", test_data[0], test_data[1], test_data[2], test_data[3]);
+
     if (ds_write_length > 0)
     {
         const uint32_t ds_offset = offset + upgrade_ds_location();
@@ -347,6 +374,12 @@ uint32_t wiced_firmware_upgrade_process_block(uint32_t offset, const uint8_t * d
     {
         const uint32_t xs_offset = offset + ds_write_length - ds_length + XS_LOCATION_UPGRADE;
         byte_written += upgrade_location_write(xs_offset, data + ds_write_length, xs_write_length);
+
+        const uint32_t xs_offset_ext = offset + ds_write_length - ds_length + ext_flash_upgrade_address;
+        upgrade_location_ext_write(xs_offset_ext, data + ds_write_length, xs_write_length);
+
+
+
     }
     return byte_written;
 }
@@ -368,7 +401,7 @@ uint32_t upgrade_location_write(uint32_t offset, const uint8_t * data, uint32_t 
     data += offset_adjustment;
     len -= offset_adjustment;
 
-    printf("write: offset: 0x%08lx len: %lu\n", offset, len);
+    printf("!!!!!!!!!write: offset: 0x%08lx len: %lu\n", offset, len);
     /* write length should in words */
     if (wiced_hal_eflash_write(ef_offset(offset), (uint8_t *) data, (len + 3) & 0xfffffffc) == WICED_SUCCESS)
     {
@@ -381,11 +414,155 @@ uint32_t upgrade_location_write(uint32_t offset, const uint8_t * data, uint32_t 
     }
 }
 
+uint32_t upgrade_location_ext_write(uint32_t offset, const uint8_t * data, uint32_t len)
+{
+
+    // reserve first 4 bytes of download to commit when complete, in case of unexpected power loss
+    // boot rom checks this signature to validate DS
+    uint32_t offset_adjustment;
+    if (offset == upgrade_ds_location())
+    {
+        offset_adjustment = 4;
+    }
+    else
+    {
+        offset_adjustment = 0;
+    }
+    offset += offset_adjustment;
+    data += offset_adjustment;
+    len -= offset_adjustment;
+
+    printf("!!!!!!!!!(ext)write: offset: 0x%08lx len: %lu, data[0]: 0x%08x, data[1]: 0x%08x, data[2]: 0x%08x \n", offset, len, *(data), *(data+4), *(data+8));
+
+
+    /* write length should in words */
+    uint32_t read_flash_buffer[4] = {0};
+    if (wiced_platform_serial_flash_write(offset, (uint8_t *) data, (len + 3) & 0xfffffffc) != 0)
+    {
+        if(wiced_platform_serial_flash_read(offset, (uint8_t *)read_flash_buffer, 16)!=0)
+        {
+            printf("(Read after write)%lx, %lx, %lx, %lx\n", read_flash_buffer[0], read_flash_buffer[1], read_flash_buffer[2], read_flash_buffer[3]);
+        }
+        return len + offset_adjustment;
+    }
+    else
+    {
+        printf("ERROR write\n");
+        return 0;
+    }
+}
+uint8_t tmp_flash[256];
+bool wiced_firmware_upgrade_copy(void)
+{
+    wiced_platform_serial_flash_read(OFFSETOF(upgrade_xs_t, ds_header), (uint8_t *)tmp_flash, sizeof(upgrade_xs_t));
+    if (wiced_hal_eflash_write(ef_offset(XS_LOCATION_UPGRADE), tmp_flash, sizeof(upgrade_xs_t)))
+    {
+        return false;
+    }
+    upgrade_xs_t * upgrade_xs = (upgrade_xs_t *) XS_LOCATION_UPGRADE;
+
+    uint32_t ext_flash_current_data_address = sizeof(upgrade_xs_t);
+    uint32_t internal_flash_current_data_address = XS_LOCATION_UPGRADE + sizeof(upgrade_xs_t);
+
+    for (uint32_t index=0;index<upgrade_xs->compressed_data_length;index += 256)
+    {
+        ext_flash_current_data_address += index;
+        internal_flash_current_data_address += index;
+        wiced_platform_serial_flash_read(ext_flash_current_data_address, (uint8_t *)(tmp_flash), 256);
+        if (wiced_hal_eflash_write(ef_offset(internal_flash_current_data_address), tmp_flash, 256))
+        {
+            return false;
+        }
+    }
+    uint32_t rest_data_length = upgrade_xs->compressed_data_length % 256;
+    wiced_platform_serial_flash_read(ext_flash_current_data_address+256,  (uint8_t *)(tmp_flash), rest_data_length);
+    if (wiced_hal_eflash_write(internal_flash_current_data_address+256, tmp_flash, rest_data_length)!= WICED_SUCCESS)
+    {
+        return false;
+    }
+    return true;
+}
+uint32_t tmp[8] = {0};
 bool wiced_firmware_upgrade_finalize(void)
 {
     const ds_header_t * ds_header   = (ds_header_t *) upgrade_ds_location();
     const upgrade_xs_t * upgrade_xs = (upgrade_xs_t *) XS_LOCATION_UPGRADE;
 
+    uint32_t tmp_buffer_ext;
+    wiced_platform_serial_flash_read(0, (uint8_t *)tmp, sizeof(upgrade_xs_t));
+    for(int i=0; i<8;i++)
+    {
+        printf("(external_flash)[%d]=%lx\n", i, tmp[i]);
+
+    }
+    for(int i=0; i<8;i++)
+    {
+        printf("(upgrade_xs)[%d]=%x\n", i, upgrade_xs->ds_header.signature[i]);
+    }
+    printf("(upgrade_xs)%lx, %lx, %lx, %lx, %lx, %lx\n", upgrade_xs->ds_header.crc32, upgrade_xs->ds_header.length, upgrade_xs->crc32, upgrade_xs->length, upgrade_xs->compressed_data_crc32, upgrade_xs->compressed_data_length);
+    //wiced_firmware_upgrade_copy();
+
+#if 0
+    uint32_t xs_info[4];    // [2]: compressed_data_crc32, [3]: compressed_data_length
+    if (wiced_platform_serial_flash_read(OFFSETOF(upgrade_xs_t, crc32), (uint8_t *)xs_info, sizeof(xs_info)) == 0)
+    {
+        return false;
+    }
+
+    uint32_t crc32_xs = 0xffffffff;
+    uint32_t j;
+
+    for (j = 0; j < xs_info[3]; j += UINT16_MAX)
+    {
+        uint32_t i = 0;
+        uint32_t ext_flash_cx_data_addr = 0;
+        uint32_t int_flash_tmp_data_addr = 0;
+
+        if (WICED_SUCCESS != wiced_hal_eflash_erase(int_flash_tmp_address, UINT16_MAX + 1))
+        {
+            printf("ERROR internal flash erase\n");
+            return false;
+        }
+
+        for (i = 0;i < UINT16_MAX / sizeof(tmp_flash);i ++)
+        {
+            ext_flash_cx_data_addr = OFFSETOF(upgrade_xs_t, compressed_data) + i * sizeof(tmp_flash) + j;
+
+            if (wiced_platform_serial_flash_read(ext_flash_cx_data_addr, tmp_flash, sizeof(tmp_flash)) == 0)
+            {
+                return false;
+            }
+
+            int_flash_tmp_data_addr = int_flash_tmp_address + i * sizeof(tmp_flash);
+
+            if (wiced_hal_eflash_write(int_flash_tmp_data_addr, tmp_flash, sizeof(tmp_flash)) != WICED_SUCCESS)
+            {
+                return false;
+            }
+        }
+
+        ext_flash_cx_data_addr = OFFSETOF(upgrade_xs_t, compressed_data) + i * sizeof(tmp_flash) + j;
+
+        if (wiced_platform_serial_flash_read(ext_flash_cx_data_addr, tmp_flash, UINT16_MAX % sizeof(tmp_flash)) == 0)
+        {
+            return false;
+        }
+
+        int_flash_tmp_data_addr = int_flash_tmp_address + i * sizeof(tmp_flash);
+
+        if (wiced_hal_eflash_write(int_flash_tmp_data_addr, tmp_flash, UINT16_MAX % sizeof(tmp_flash)) != WICED_SUCCESS)
+        {
+            return false;
+        }
+
+        uint32_t crc32_Update(uint32_t crc, const uint8_t * buf, uint16_t len);
+
+        crc32_xs = crc32_Update(crc32_xs, (uint8_t *)int_flash_tmp_data_addr, MIN(xs_info[3] - j, UINT16_MAX));
+    }
+
+    crc32_xs ^= 0xffffffff;
+
+#endif
     const uint32_t ds_crc32 = calc_crc32(ds_header->data, ds_header->length);
     const uint32_t cx_crc32 = calc_crc32(upgrade_xs->compressed_data, upgrade_xs->compressed_data_length);
 
